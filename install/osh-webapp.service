@@ -1,0 +1,17 @@
+[Unit]
+Description=OSH Database Web UI (Node.js/Vue.js)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__APP_USER__
+WorkingDirectory=__APP_DIR__
+Environment=NODE_ENV=production
+Environment=OSH_WEBAPP_CONFIG=__APP_DIR__/config.json
+ExecStart=/usr/bin/env node __APP_DIR__/server.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

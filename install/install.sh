@@ -48,7 +48,11 @@ apt-get install -y --no-install-recommends \
   git \
   build-essential \
   nodejs \
-  npm
+  npm \
+  libunbound8 \
+  libnsl2 \
+  libnsl-dev
+
 
 # ---------------------------------------------------------------- Node.js ----
 node_major() {

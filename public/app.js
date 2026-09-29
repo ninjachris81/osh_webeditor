@@ -45,7 +45,7 @@ createApp({
       lookupOptions: {},
       loading: false,
       error: null,
-      editor: { show: false, mode: 'create', fields: [], pk: {}, saving: false, error: null },
+      editor: { show: false, mode: 'create', duplicate: false, fields: [], pk: {}, saving: false, error: null },
     };
   },
 
@@ -261,6 +261,7 @@ createApp({
       this.editor = {
         show: true,
         mode: 'create',
+        duplicate: false,
         fields: this.buildFields(null),
         pk: {},
         saving: false,
@@ -274,8 +275,28 @@ createApp({
       this.editor = {
         show: true,
         mode: 'edit',
+        duplicate: false,
         fields: this.buildFields(row),
         pk,
+        saving: false,
+        error: null,
+      };
+    },
+
+    openDuplicate(row) {
+      const fields = this.buildFields(row);
+      for (const field of fields) {
+        if (field.isPrimaryKey && field.hasDefault) {
+          field.value = '';
+          field.isNull = false;
+        }
+      }
+      this.editor = {
+        show: true,
+        mode: 'create',
+        duplicate: true,
+        fields,
+        pk: {},
         saving: false,
         error: null,
       };

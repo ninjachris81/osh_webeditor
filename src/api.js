@@ -13,6 +13,7 @@ const MAIN_TABLES = [
   'dm_users',
   'dm_value_groups',
   'dm_values',
+  'dm_version',
 ];
 
 // Columns that get a per-value quickfilter dropdown in the table header

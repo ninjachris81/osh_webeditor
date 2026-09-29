@@ -100,6 +100,7 @@
                 </td>
                 <td class="actions">
                   <button class="small" @click="openEdit(row)" :disabled="schema.primaryKey.length === 0">Edit</button>
+                  <button class="small" @click="openDuplicate(row)">Duplicate</button>
                   <button class="small danger" @click="deleteRow(row)" :disabled="schema.primaryKey.length === 0">Delete</button>
                 </td>
               </tr>
@@ -127,7 +128,7 @@
       <!-- Row editor modal -->
       <div class="modal-backdrop" v-if="editor.show" @click.self="closeEditor">
         <div class="modal">
-          <h2>{{ editor.mode === 'create' ? 'New row' : 'Edit row' }} &mdash; {{ currentTable }}</h2>
+          <h2>{{ editor.duplicate ? 'Duplicate row' : editor.mode === 'create' ? 'New row' : 'Edit row' }} &mdash; {{ currentTable }}</h2>
 
           <div v-if="editor.error" class="error-banner">{{ editor.error }}</div>
 

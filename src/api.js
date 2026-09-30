@@ -316,6 +316,46 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
     res.json({ ok: true });
   }));
 
+  router.get('/system-overview', asyncHandler(async (req, res) => {
+    const tableNames = new Set((await schemaCache.tables()).map((table) => table.name));
+    const requiredTables = [
+      'dm_known_areas',
+      'dm_known_rooms',
+      'dm_known_rooms_actors',
+      'dm_known_rooms_values',
+    ];
+    const missingTable = requiredTables.find((table) => !tableNames.has(table));
+    if (missingTable) throw httpError(404, `Required table not found: ${missingTable}`);
+
+    const [areasResult, roomsResult, actorsResult, valuesResult] = await Promise.all([
+      pool.query(`SELECT id FROM ${quoteIdent('dm_known_areas')} ORDER BY display_order NULLS LAST, id`),
+      pool.query(`SELECT id, known_area_id FROM ${quoteIdent('dm_known_rooms')} ORDER BY id`),
+      pool.query(`SELECT room_id, actor_id, value_group_id FROM ${quoteIdent('dm_known_rooms_actors')} ORDER BY order_index NULLS LAST, actor_id`),
+      pool.query(`SELECT room_id, value_id, value_group_id FROM ${quoteIdent('dm_known_rooms_values')} ORDER BY order_index NULLS LAST, value_id`),
+    ]);
+
+    const areas = areasResult.rows.map((area) => ({ id: area.id, rooms: [] }));
+    const areaById = new Map(areas.map((area) => [String(area.id), area]));
+    const roomById = new Map();
+    for (const row of roomsResult.rows) {
+      const area = areaById.get(String(row.known_area_id));
+      if (!area) continue;
+      const room = { id: row.id, actors: [], values: [] };
+      area.rooms.push(room);
+      roomById.set(String(row.id), room);
+    }
+    for (const row of actorsResult.rows) {
+      const room = roomById.get(String(row.room_id));
+      if (room) room.actors.push({ id: row.actor_id, value_group_id: row.value_group_id });
+    }
+    for (const row of valuesResult.rows) {
+      const room = roomById.get(String(row.room_id));
+      if (room) room.values.push({ id: row.value_id, value_group_id: row.value_group_id });
+    }
+
+    res.json({ areas });
+  }));
+
   router.get('/warning-log/events', asyncHandler(async (req, res) => {
     if (!mqttConfig.host) {
       throw httpError(503, 'MQTT is not configured. Set mqtt.host in config.json.');

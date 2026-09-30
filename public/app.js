@@ -77,6 +77,7 @@ createApp({
       missingMain: [],
       currentTable: null,
       currentView: 'table',
+      systemOverview: { areas: [], loading: false, error: null, expandedAreas: {}, expandedRooms: {} },
       schema: null,
       rows: [],
       total: 0,
@@ -197,6 +198,49 @@ createApp({
       } catch (err) {
         this.error = `Failed to load schema for ${name}: ${err.message}`;
       }
+    },
+
+    async showSystemOverview() {
+      this.closeStatusOverview();
+      this.closeWarningLog();
+      this.closeWatch();
+      this.currentView = 'system-overview';
+      this.currentTable = null;
+      this.systemOverview = {
+        areas: [],
+        loading: true,
+        error: null,
+        expandedAreas: {},
+        expandedRooms: {},
+      };
+      try {
+        const data = await api('/api/system-overview');
+        this.systemOverview.areas = data.areas;
+        this.systemOverview.expandedAreas = Object.fromEntries(
+          data.areas.map((area) => [String(area.id), true])
+        );
+      } catch (err) {
+        this.systemOverview.error = `Failed to load system hierarchy: ${err.message}`;
+      } finally {
+        this.systemOverview.loading = false;
+      }
+    },
+
+    toggleSystemArea(areaId) {
+      const key = String(areaId);
+      this.systemOverview.expandedAreas[key] = !this.systemOverview.expandedAreas[key];
+    },
+
+    toggleSystemRoom(areaId, roomId) {
+      const key = `${areaId}:${roomId}`;
+      this.systemOverview.expandedRooms[key] = !this.systemOverview.expandedRooms[key];
+    },
+
+    formatMindmapId(item) {
+      const groupId = item.value_group_id;
+      return groupId === null || groupId === undefined || groupId === ''
+        ? String(item.id)
+        : `${groupId}.${item.id}`;
     },
 
     async loadFilterOptions() {
@@ -689,6 +733,12 @@ createApp({
       } catch (err) {
         this.statusOverview.error = `Failed to prepare device registration: ${err.message}`;
       }
+    },
+
+    async openKnownDevice(device) {
+      await this.selectTable('dm_known_devices');
+      if (!this.schema) return;
+      this.openEdit(device.details);
     },
 
     isDeviceOnline(device) {

@@ -550,6 +550,159 @@ select:focus {
   min-width: 620px;
 }
 
+.mindmap-scroll {
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 4px 24px;
+}
+
+.mindmap-root {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 18px;
+  min-width: max-content;
+}
+
+.mindmap-area {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+}
+
+.mindmap-node {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  width: 168px;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--text);
+  text-align: left;
+  white-space: nowrap;
+  font: inherit;
+}
+
+button.mindmap-node {
+  cursor: pointer;
+}
+
+button.mindmap-node:hover {
+  border-color: var(--accent);
+}
+
+.area-node {
+  border-left: 4px solid #4f8ef7;
+  font-weight: 650;
+}
+
+.room-node {
+  border-left: 4px solid #d6a43a;
+}
+
+.actor-node {
+  border-left: 4px solid #4ba978;
+}
+
+.value-node {
+  border-left: 4px solid #cb7853;
+}
+
+.fold-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 17px;
+  height: 17px;
+  flex: 0 0 17px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.mindmap-children {
+  position: relative;
+  border-left: 1px solid var(--border);
+  padding-left: 22px;
+}
+
+.room-branches {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 18px 24px;
+  padding-top: 3px;
+}
+
+.mindmap-room {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.object-groups {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  margin-left: 12px;
+  padding-top: 3px;
+  padding-bottom: 3px;
+}
+
+.object-group h3 {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.object-nodes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 560px;
+}
+
+.actor-node,
+.value-node {
+  width: auto;
+  min-width: 116px;
+  max-width: 190px;
+}
+
+.actor-node small,
+.value-node small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+@media (max-width: 700px) {
+  .mindmap-area {
+    gap: 14px;
+  }
+
+  .mindmap-node {
+    width: 142px;
+  }
+
+  .actor-node,
+  .value-node {
+    width: auto;
+    min-width: 108px;
+  }
+
+  .object-nodes {
+    max-width: 380px;
+  }
+}
+
 .device-presence {
   display: inline-flex;
   align-items: center;

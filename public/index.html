@@ -15,6 +15,7 @@
       </div>
 
       <ul class="nav overview-nav">
+        <li><a href="#" :class="{ active: currentView === 'system-overview' }" @click.prevent="showSystemOverview">System Overview</a></li>
         <li><a href="#" :class="{ active: currentView === 'overview' }" @click.prevent="showStatusOverview">Status Overview</a></li>
         <li><a href="#" :class="{ active: currentView === 'warning-log' }" @click.prevent="showWarningLog">Warning Log</a></li>
       </ul>
@@ -43,7 +44,57 @@
         <button class="link" @click="error = null">dismiss</button>
       </div>
 
-      <section v-if="currentView === 'overview'" class="status-overview">
+      <section v-if="currentView === 'system-overview'" class="system-overview">
+        <header class="toolbar">
+          <h1>System Overview</h1>
+          <span class="muted" v-if="!systemOverview.loading">{{ systemOverview.areas.length }} areas</span>
+          <span class="spacer"></span>
+          <button @click="showSystemOverview">Refresh</button>
+        </header>
+        <div v-if="systemOverview.error" class="error-banner">{{ systemOverview.error }}</div>
+        <div v-if="systemOverview.loading" class="muted center">Loading system hierarchy&hellip;</div>
+        <div v-else-if="systemOverview.areas.length === 0" class="muted center">No known areas</div>
+        <div v-else class="mindmap-scroll">
+          <div class="mindmap-root">
+            <section v-for="area in systemOverview.areas" :key="area.id" class="mindmap-area">
+              <button class="mindmap-node area-node" @click="toggleSystemArea(area.id)" :aria-expanded="!!systemOverview.expandedAreas[area.id]">
+                <span class="fold-mark">{{ systemOverview.expandedAreas[area.id] ? '−' : '+' }}</span>
+                <span>{{ area.id }}</span>
+              </button>
+              <div v-if="systemOverview.expandedAreas[area.id] && area.rooms.length" class="mindmap-children room-branches">
+                <section v-for="room in area.rooms" :key="room.id" class="mindmap-room">
+                  <button class="mindmap-node room-node" @click="toggleSystemRoom(area.id, room.id)" :aria-expanded="!!systemOverview.expandedRooms[area.id + ':' + room.id]">
+                    <span class="fold-mark">{{ systemOverview.expandedRooms[area.id + ':' + room.id] ? '−' : '+' }}</span>
+                    <span>{{ room.id }}</span>
+                  </button>
+                  <div v-if="systemOverview.expandedRooms[area.id + ':' + room.id]" class="mindmap-children object-groups">
+                    <section v-if="room.actors.length" class="object-group">
+                      <h3>Actors</h3>
+                      <div class="object-nodes">
+                        <div v-for="(actor, index) in room.actors" :key="actor.value_group_id + ':' + actor.id + ':' + index" class="mindmap-node actor-node">
+                          <span>{{ formatMindmapId(actor) }}</span>
+                        </div>
+                      </div>
+                    </section>
+                    <section v-if="room.values.length" class="object-group">
+                      <h3>Values</h3>
+                      <div class="object-nodes">
+                        <div v-for="(value, index) in room.values" :key="value.value_group_id + ':' + value.id + ':' + index" class="mindmap-node value-node">
+                          <span>{{ formatMindmapId(value) }}</span>
+                        </div>
+                      </div>
+                    </section>
+                    <span v-if="room.actors.length === 0 && room.values.length === 0" class="muted">No actors or values</span>
+                  </div>
+                </section>
+              </div>
+              <div v-else-if="systemOverview.expandedAreas[area.id]" class="mindmap-children muted">No rooms</div>
+            </section>
+          </div>
+        </div>
+      </section>
+
+      <section v-else-if="currentView === 'overview'" class="status-overview">
         <header class="toolbar">
           <h1>Status Overview</h1>
           <span class="muted">{{ onlineDeviceCount }} / {{ statusOverview.devices.length }} online</span>
@@ -64,14 +115,15 @@
                 <th>Sender</th>
                 <th>Message timestamp</th>
                 <th>Last received</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               <tr v-if="statusOverview.loading">
-                <td :colspan="statusDeviceColumns.length + 7" class="muted center">Loading devices&hellip;</td>
+                <td :colspan="statusDeviceColumns.length + 8" class="muted center">Loading devices&hellip;</td>
               </tr>
               <tr v-else-if="statusOverview.devices.length === 0">
-                <td :colspan="statusDeviceColumns.length + 7" class="muted center">No known devices</td>
+                <td :colspan="statusDeviceColumns.length + 8" class="muted center">No known devices</td>
               </tr>
               <tr v-for="device in statusOverview.devices" :key="device.id + ':' + device.serviceId">
                 <td v-for="column in statusDeviceColumns" :key="column">{{ device.details[column] === null ? 'NULL' : device.details[column] === undefined ? '—' : formatValue(device.details[column]) }}</td>
@@ -92,6 +144,9 @@
                 <td>{{ device.senderId || '—' }}</td>
                 <td>{{ device.messageTimestamp ? new Date(device.messageTimestamp).toLocaleString() : '—' }}</td>
                 <td>{{ device.lastMessageAt ? new Date(device.lastMessageAt).toLocaleString() : '—' }}</td>
+                <td class="actions">
+                  <button v-if="!device.unknown" class="small" @click="openKnownDevice(device)">Open device</button>
+                </td>
               </tr>
             </tbody>
           </table>

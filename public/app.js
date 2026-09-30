@@ -83,7 +83,9 @@ createApp({
     },
     statusDeviceColumns() {
       const device = this.statusOverview.devices[0];
-      return device ? Object.keys(device.details) : ['id', 'serviceId'];
+      return device
+        ? Object.keys(device.details).filter((column) => !(column === 'serviceId' && 'service_id' in device.details))
+        : ['id', 'service_id'];
     },
     onlineDeviceCount() {
       return this.statusOverview.devices.filter((device) => this.isDeviceOnline(device)).length;

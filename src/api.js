@@ -322,10 +322,13 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
       throw httpError(404, 'Table not found: dm_known_devices');
     }
     const columns = await schemaCache.columns('dm_known_devices');
-    for (const required of ['id', 'serviceId']) {
-      if (!columns.some((column) => column.name === required)) {
-        throw httpError(500, `Required column missing from dm_known_devices: ${required}`);
-      }
+    if (!columns.some((column) => column.name === 'id')) {
+      throw httpError(500, 'Required column missing from dm_known_devices: id');
+    }
+    const serviceColumn = columns.find((column) => column.name === 'service_id') ||
+      columns.find((column) => column.name === 'serviceId');
+    if (!serviceColumn) {
+      throw httpError(500, 'Required column missing from dm_known_devices: service_id');
     }
     if (!mqttConfig.host) {
       throw httpError(503, 'MQTT is not configured. Set mqtt.host in config.json.');
@@ -337,7 +340,7 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
     const devices = result.rows.map((row) => ({
       ...row,
       id: String(row.id),
-      serviceId: String(row.serviceId),
+      serviceId: String(row[serviceColumn.name]),
     }));
     const parsedTimeout = Number(
       generalConfig.onlineTimeoutSeconds ?? mqttConfig.onlineTimeoutSeconds

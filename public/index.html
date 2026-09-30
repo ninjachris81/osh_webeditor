@@ -56,6 +56,7 @@
             <thead>
               <tr>
                 <th v-for="column in statusDeviceColumns" :key="column">{{ column }}</th>
+                <th>Name</th>
                 <th>Online</th>
                 <th>Health</th>
                 <th>Uptime</th>
@@ -66,13 +67,20 @@
             </thead>
             <tbody>
               <tr v-if="statusOverview.loading">
-                <td :colspan="statusDeviceColumns.length + 6" class="muted center">Loading devices&hellip;</td>
+                <td :colspan="statusDeviceColumns.length + 7" class="muted center">Loading devices&hellip;</td>
               </tr>
               <tr v-else-if="statusOverview.devices.length === 0">
-                <td :colspan="statusDeviceColumns.length + 6" class="muted center">No known devices</td>
+                <td :colspan="statusDeviceColumns.length + 7" class="muted center">No known devices</td>
               </tr>
               <tr v-for="device in statusOverview.devices" :key="device.id + ':' + device.serviceId">
-                <td v-for="column in statusDeviceColumns" :key="column">{{ device.details[column] === null ? 'NULL' : formatValue(device.details[column]) }}</td>
+                <td v-for="column in statusDeviceColumns" :key="column">{{ device.details[column] === null ? 'NULL' : device.details[column] === undefined ? '—' : formatValue(device.details[column]) }}</td>
+                <td>
+                  <template v-if="device.unknown">
+                    Unknown Service
+                    <button class="small register-device" @click="openRegisterDevice(device)">Register</button>
+                  </template>
+                  <span v-else>{{ device.displayName }}</span>
+                </td>
                 <td>
                   <span class="device-presence" :class="isDeviceOnline(device) ? 'online' : 'offline'">
                     <span class="presence-dot"></span>{{ isDeviceOnline(device) ? 'Online' : 'Offline' }}

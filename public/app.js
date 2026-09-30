@@ -84,7 +84,10 @@ createApp({
     statusDeviceColumns() {
       const device = this.statusOverview.devices[0];
       return device
-        ? Object.keys(device.details).filter((column) => !(column === 'serviceId' && 'service_id' in device.details))
+        ? Object.keys(device.details).filter((column) => (
+          !(column === 'serviceId' && 'service_id' in device.details) &&
+          column !== 'name' && column !== 'device_name'
+        ))
         : ['id', 'service_id'];
     },
     onlineDeviceCount() {
@@ -416,6 +419,8 @@ createApp({
           id: String(details.id),
           serviceId: String(details.serviceId),
           details,
+          displayName: details.name || details.device_name || details.serviceId,
+          unknown: false,
           lastMessageAt: null,
           health: null,
           uptime: null,
@@ -435,17 +440,27 @@ createApp({
           const index = this.statusOverview.devices.findIndex((device) => (
             device.id === data.deviceId && device.serviceId === data.serviceId
           ));
-          if (index < 0) return;
-          const device = this.statusOverview.devices[index];
           const messageTimestamp = this.timestampMilliseconds(message.t);
-          this.statusOverview.devices.splice(index, 1, {
+          const device = index < 0
+            ? {
+              id: String(data.deviceId),
+              serviceId: String(data.serviceId),
+              details: { id: String(data.deviceId), service_id: String(data.serviceId) },
+              displayName: 'Unknown Service',
+              unknown: true,
+            }
+            : this.statusOverview.devices[index];
+          const updatedDevice = {
             ...device,
             lastMessageAt: data.receivedAt,
             health: Number(message.h) === 1,
             uptime: this.formatUptime(message.v),
             messageTimestamp,
             senderId: message.s,
-          });
+            rawHeartbeat: message,
+          };
+          if (index < 0) this.statusOverview.devices.push(updatedDevice);
+          else this.statusOverview.devices.splice(index, 1, updatedDevice);
         } catch (err) {
           this.statusOverview.error = `Invalid device heartbeat: ${err.message}`;
         }
@@ -471,6 +486,55 @@ createApp({
       this.statusSource = null;
       if (this.statusTimer) clearInterval(this.statusTimer);
       this.statusTimer = null;
+    },
+
+    async openRegisterDevice(device) {
+      try {
+        const tableName = 'dm_known_devices';
+        const schema = await api(`/api/tables/${encodeURIComponent(tableName)}/schema`);
+        this.currentTable = tableName;
+        this.schema = schema;
+        this.filterOptions = {};
+        this.lookupOptions = {};
+        const fields = this.buildFields(null);
+        const rawValues = {
+          id: device.id,
+          service_id: device.serviceId,
+          serviceId: device.serviceId,
+          name: 'Unknown Service',
+          device_name: 'Unknown Service',
+          sender_id: device.rawHeartbeat.s,
+          senderId: device.rawHeartbeat.s,
+          sender: device.rawHeartbeat.s,
+          s: device.rawHeartbeat.s,
+          health: device.rawHeartbeat.h,
+          h: device.rawHeartbeat.h,
+          timestamp: device.rawHeartbeat.t,
+          t: device.rawHeartbeat.t,
+          uptime: device.rawHeartbeat.v,
+          v: device.rawHeartbeat.v,
+        };
+        for (const field of fields) {
+          if (!Object.prototype.hasOwnProperty.call(rawValues, field.name)) continue;
+          const value = rawValues[field.name];
+          field.value = field.type === 'boolean'
+            ? Number(value) === 1
+            : this.toInputValue(value);
+          field.isNull = value === null || value === undefined;
+        }
+        this.editor = {
+          show: true,
+          mode: 'create',
+          duplicate: false,
+          returnToOverview: true,
+          fields,
+          pk: {},
+          saving: false,
+          error: null,
+        };
+      } catch (err) {
+        this.statusOverview.error = `Failed to prepare device registration: ${err.message}`;
+      }
     },
 
     isDeviceOnline(device) {
@@ -573,7 +637,11 @@ createApp({
           });
         }
         this.editor.show = false;
-        await this.loadRows();
+        if (this.editor.returnToOverview) {
+          this.showStatusOverview();
+        } else {
+          await this.loadRows();
+        }
       } catch (err) {
         this.editor.error = err.message;
       } finally {

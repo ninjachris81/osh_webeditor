@@ -380,7 +380,6 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
         const topicParts = topic.split('/');
         if (topicParts.length !== 4 || topicParts[0] !== 'osh' || topicParts[1] !== 'dd') continue;
         const [deviceId, serviceId] = topicParts.slice(2);
-        if (!devices.some((device) => device.id === deviceId && device.serviceId === serviceId)) continue;
         send('heartbeat', {
           deviceId,
           serviceId,

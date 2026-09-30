@@ -232,6 +232,7 @@ createApp({
               for (const item of room.actors.concat(room.values)) {
                 if (String(item.value_group_id) === String(update.value_group_id) && String(item.id) === String(update.id)) {
                   item.latestValue = update.value;
+                  item.valueRevision = (item.valueRevision || 0) + 1;
                 }
               }
             }

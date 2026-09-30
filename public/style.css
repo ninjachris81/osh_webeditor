@@ -575,7 +575,7 @@ select:focus {
   align-items: center;
   gap: 9px;
   min-width: 180px;
-  height: 110px;
+  height: 120px;
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 5px;
@@ -595,11 +595,13 @@ button.mindmap-node:hover {
 }
 
 .area-node {
+  height: auto;
   border-left: 4px solid #4f8ef7;
   font-weight: 650;
 }
 
 .room-node {
+  height: auto;
   border-left: 4px solid #d6a43a;
 }
 
@@ -678,6 +680,7 @@ button.mindmap-node:hover {
   gap: 7px;
   width: auto;
   min-width: 180px;
+  height: 120px;
   max-width: 190px;
   white-space: normal;
 }
@@ -704,6 +707,34 @@ button.mindmap-node:hover {
   font-weight: 400;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.mindmap-live-value {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 3px;
+  margin-bottom: 1px;
+  transform-origin: left center;
+  animation: mindmap-value-pop 380ms cubic-bezier(0.2, 0.8, 0.25, 1);
+}
+
+@keyframes mindmap-value-pop {
+  0% {
+    opacity: 0.55;
+    transform: scale(0.86);
+  }
+  65% {
+    opacity: 1;
+    transform: scale(1.07);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mindmap-live-value {
+    animation-duration: 1ms;
+  }
 }
 
 .mindmap-actions {

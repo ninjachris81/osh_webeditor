@@ -73,10 +73,12 @@
                       <div class="object-nodes">
                         <div v-for="(actor, index) in room.actors" :key="actor.value_group_id + ':' + actor.id + ':' + index" class="mindmap-node actor-node">
                           <span class="mindmap-item-label">
-                            <span v-if="actor.latestValue !== undefined" :key="actor.valueRevision" class="mindmap-live-value">{{ formatValue(actor.latestValue) }}</span>
+                            <span v-if="actor.latestValue !== undefined && actor.latestValue !== null" :key="actor.valueRevision" class="mindmap-live-value">{{ formatValue(actor.latestValue) }}</span>
+                            <span v-else class="mindmap-live-value mindmap-value-placeholder">-</span>
                             <span>{{ formatMindmapId(actor) }}</span>
                             <small v-if="actor.class_type">{{ actor.class_type }}</small>
                             <small v-if="actor.comment">{{ actor.comment }}</small>
+                            <small v-else>-</small>
                           </span>
                           <div class="mindmap-actions">
                             <button class="small" @click="openMindmapItem(actor, 'dm_actors')">Edit</button>
@@ -90,10 +92,12 @@
                       <div class="object-nodes">
                         <div v-for="(value, index) in room.values" :key="value.value_group_id + ':' + value.id + ':' + index" class="mindmap-node value-node">
                           <span class="mindmap-item-label">
-                            <span v-if="value.latestValue !== undefined" :key="value.valueRevision" class="mindmap-live-value">{{ formatValue(value.latestValue) }}</span>
+                            <span v-if="value.latestValue !== undefined && value.latestValue !== null" :key="value.valueRevision" class="mindmap-live-value">{{ formatValue(value.latestValue) }}</span>
+                            <span v-else class="mindmap-live-value mindmap-value-placeholder">-</span>
                             <span>{{ formatMindmapId(value) }}</span>
                             <small v-if="value.class_type">{{ value.class_type }}</small>
                             <small v-if="value.comment">{{ value.comment }}</small>
+                            <small v-else>-</small>
                           </span>
                           <div class="mindmap-actions">
                             <button class="small" @click="openMindmapItem(value, 'dm_values')">Edit</button>

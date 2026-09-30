@@ -9,6 +9,8 @@ const MAIN_TABLES = [
   'dm_known_areas',
   'dm_known_devices',
   'dm_known_rooms',
+  'dm_known_rooms_actors',
+  'dm_known_rooms_values',
   'dm_processor_tasks',
   'dm_processor_variables',
   'dm_users',

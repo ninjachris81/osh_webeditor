@@ -76,7 +76,7 @@ createApp({
       otherTables: [],
       missingMain: [],
       currentTable: null,
-      currentView: 'table',
+      currentView: 'system-overview',
       systemOverview: { areas: [], loading: false, error: null, expandedAreas: {}, expandedRooms: {} },
       systemOverviewValueSource: null,
       schema: null,
@@ -169,8 +169,8 @@ createApp({
         this.mainTables = data.tables.filter((t) => t.main);
         this.otherTables = data.tables.filter((t) => !t.main);
         this.missingMain = data.missingMain || [];
-        if (!this.currentTable && this.mainTables.length > 0) {
-          this.selectTable(this.mainTables[0].name);
+        if (!this.currentTable) {
+          this.showSystemOverview();
         }
       } catch (err) {
         this.error = `Failed to load table list: ${err.message}`;

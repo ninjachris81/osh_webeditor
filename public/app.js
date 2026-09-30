@@ -463,19 +463,19 @@ createApp({
       };
     },
 
-    openWatch(row) {
+    openWatch(row, tableName = this.currentTable) {
       this.closeWatch();
-      const kind = this.currentTable === 'dm_actors' ? 'ac' : 'va';
+      const kind = tableName === 'dm_actors' ? 'ac' : 'va';
       const topic = `osh/${kind}/${row.value_group_id}/${row.id}`;
       const params = new URLSearchParams({
-        table: this.currentTable,
+        table: tableName,
         value_group_id: row.value_group_id,
         id: row.id,
       });
       this.watch = {
         show: true,
         topic,
-        table: this.currentTable,
+        table: tableName,
         value_group_id: row.value_group_id,
         id: row.id,
         status: 'connecting',

@@ -574,8 +574,8 @@ select:focus {
   display: inline-flex;
   align-items: center;
   gap: 9px;
-  width: 168px;
-  min-height: 42px;
+  min-width: 180px;
+  height: 110px;
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 5px;
@@ -672,9 +672,14 @@ button.mindmap-node:hover {
 
 .actor-node,
 .value-node {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 7px;
   width: auto;
-  min-width: 116px;
+  min-width: 180px;
   max-width: 190px;
+  white-space: normal;
 }
 
 .actor-node small,
@@ -701,19 +706,33 @@ button.mindmap-node:hover {
   white-space: nowrap;
 }
 
+.mindmap-actions {
+  display: flex;
+  gap: 6px;
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+}
+
+.mindmap-actions button {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 6px;
+  font-size: 11px;
+}
+
 @media (max-width: 700px) {
   .mindmap-area {
     gap: 14px;
   }
 
   .mindmap-node {
-    width: 142px;
+    min-width: 180px;
   }
 
   .actor-node,
   .value-node {
     width: auto;
-    min-width: 108px;
+    min-width: 180px;
   }
 
   .object-nodes {

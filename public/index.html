@@ -71,27 +71,37 @@
                     <section v-if="room.actors.length" class="object-group">
                       <h3>Actors</h3>
                       <div class="object-nodes">
-                        <button v-for="(actor, index) in room.actors" :key="actor.value_group_id + ':' + actor.id + ':' + index" class="mindmap-node actor-node" @click="openMindmapItem(actor, 'dm_actors')" :title="'Edit actor ' + formatMindmapId(actor)">
+                        <div v-for="(actor, index) in room.actors" :key="actor.value_group_id + ':' + actor.id + ':' + index" class="mindmap-node actor-node">
                           <span class="mindmap-item-label">
                             <span v-if="actor.latestValue !== undefined">{{ formatValue(actor.latestValue) }}</span>
                             <span>{{ formatMindmapId(actor) }}</span>
                             <small v-if="actor.class_type">{{ actor.class_type }}</small>
                             <small v-if="actor.comment">{{ actor.comment }}</small>
+                            <small v-else>No comment</small>
                           </span>
-                        </button>
+                          <div class="mindmap-actions">
+                            <button class="small" @click="openMindmapItem(actor, 'dm_actors')">Edit</button>
+                            <button class="small" @click="openWatch(actor, 'dm_actors')">Watch</button>
+                          </div>
+                        </div>
                       </div>
                     </section>
                     <section v-if="room.values.length" class="object-group">
                       <h3>Values</h3>
                       <div class="object-nodes">
-                        <button v-for="(value, index) in room.values" :key="value.value_group_id + ':' + value.id + ':' + index" class="mindmap-node value-node" @click="openMindmapItem(value, 'dm_values')" :title="'Edit value ' + formatMindmapId(value)">
+                        <div v-for="(value, index) in room.values" :key="value.value_group_id + ':' + value.id + ':' + index" class="mindmap-node value-node">
                           <span class="mindmap-item-label">
                             <span v-if="value.latestValue !== undefined">{{ formatValue(value.latestValue) }}</span>
                             <span>{{ formatMindmapId(value) }}</span>
                             <small v-if="value.class_type">{{ value.class_type }}</small>
                             <small v-if="value.comment">{{ value.comment }}</small>
+                            <small v-else>No comment</small>
                           </span>
-                        </button>
+                          <div class="mindmap-actions">
+                            <button class="small" @click="openMindmapItem(value, 'dm_values')">Edit</button>
+                            <button class="small" @click="openWatch(value, 'dm_values')">Watch</button>
+                          </div>
+                        </div>
                       </div>
                     </section>
                     <span v-if="room.actors.length === 0 && room.values.length === 0" class="muted">No actors or values</span>

@@ -331,9 +331,14 @@ createApp({
       this.watch = {
         show: true,
         topic,
+        table: this.currentTable,
+        value_group_id: row.value_group_id,
+        id: row.id,
         status: 'connecting',
         statusText: 'Connecting',
         error: null,
+        notice: null,
+        clearing: false,
         messages: [],
       };
       const source = markRaw(new EventSource(`/api/watch?${params}`));
@@ -350,7 +355,8 @@ createApp({
       });
       source.addEventListener('message', (event) => {
         try {
-          const { payload } = JSON.parse(event.data);
+          const { payload, retained } = JSON.parse(event.data);
+          if (payload === '') return;
           const data = JSON.parse(payload);
           const timestamp = Number(data.t);
           const offsetSeconds = (Date.now() - timestamp) / 1000;
@@ -366,6 +372,7 @@ createApp({
               ? `${offsetSeconds >= 0 ? '+' : ''}${offsetSeconds.toFixed(2)} s`
               : 'Invalid timestamp',
             inSync,
+            retained,
           });
           if (this.watch.messages.length > 500) this.watch.messages.pop();
         } catch (err) {
@@ -391,6 +398,28 @@ createApp({
       if (this.watchSource) this.watchSource.close();
       this.watchSource = null;
       if (this.watch) this.watch.show = false;
+    },
+
+    async clearRetained() {
+      this.watch.clearing = true;
+      this.watch.error = null;
+      this.watch.notice = null;
+      try {
+        await api('/api/watch/clear-retained', {
+          method: 'POST',
+          body: {
+            table: this.watch.table,
+            value_group_id: this.watch.value_group_id,
+            id: this.watch.id,
+          },
+        });
+        this.watch.notice = 'Retained message cleared.';
+        this.watch.messages = this.watch.messages.map((message) => ({ ...message, retained: false }));
+      } catch (err) {
+        this.watch.error = err.message;
+      } finally {
+        this.watch.clearing = false;
+      }
     },
 
     showStatusOverview() {

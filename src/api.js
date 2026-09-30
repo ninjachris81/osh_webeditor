@@ -444,7 +444,7 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
     }
 
     const topic = `osh/${topicParts[0]}/${keyParts.join('/')}`;
-    const args = ['-h', String(mqttConfig.host), '-p', String(mqttConfig.port), '-t', topic, '-q', '0', '-d'];
+    const args = ['-h', String(mqttConfig.host), '-p', String(mqttConfig.port), '-t', topic, '-q', '0', '-F', '%t %r %p', '-d'];
     if (mqttConfig.username) args.push('-u', String(mqttConfig.username));
     if (mqttConfig.password) args.push('-P', String(mqttConfig.password));
 
@@ -468,10 +468,20 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
       output += chunk;
       const lines = output.split(/\r?\n/);
       output = lines.pop();
-      for (const payload of lines) {
-        if (payload) send('message', { payload, receivedAt: Date.now() });
+      for (const line of lines) {
+        const firstSeparator = line.indexOf(' ');
+        const secondSeparator = line.indexOf(' ', firstSeparator + 1);
+        if (firstSeparator < 0 || secondSeparator < 0) continue;
+        const messageTopic = line.slice(0, firstSeparator);
+        if (messageTopic !== topic) continue;
+        send('message', {
+          retained: line.slice(firstSeparator + 1, secondSeparator) === '1',
+          payload: line.slice(secondSeparator + 1),
+          receivedAt: Date.now(),
+        });
       }
     });
+
     client.stderr.setEncoding('utf8');
     let diagnostics = '';
     client.stderr.on('data', (chunk) => {
@@ -511,6 +521,45 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
       clearInterval(heartbeat);
       client.kill('SIGTERM');
     });
+  }));
+
+  router.post('/watch/clear-retained', asyncHandler(async (req, res) => {
+    const { table, value_group_id: valueGroupId, id } = req.body || {};
+    const topicParts = {
+      dm_actors: ['ac', valueGroupId, id],
+      dm_values: ['va', valueGroupId, id],
+    }[table];
+    if (!topicParts) {
+      throw httpError(400, 'MQTT retained messages can only be cleared for dm_actors and dm_values.');
+    }
+    const keyParts = topicParts.slice(1);
+    if (keyParts.some((part) => (typeof part !== 'string' && typeof part !== 'number') || String(part) === '' || /[\/# +\u0000]/.test(String(part)))) {
+      throw httpError(400, 'A valid value_group_id and id are required.');
+    }
+    if (!mqttConfig.host) {
+      throw httpError(503, 'MQTT is not configured. Set mqtt.host in config.json.');
+    }
+
+    const topic = `osh/${topicParts[0]}/${keyParts.join('/')}`;
+    const args = ['-h', String(mqttConfig.host), '-p', String(mqttConfig.port), '-t', topic, '-q', '0', '-r', '-n'];
+    if (mqttConfig.username) args.push('-u', String(mqttConfig.username));
+    if (mqttConfig.password) args.push('-P', String(mqttConfig.password));
+
+    await new Promise((resolve, reject) => {
+      const client = spawn('mosquitto_pub', args, { stdio: ['ignore', 'ignore', 'pipe'] });
+      let stderr = '';
+      client.stderr.setEncoding('utf8');
+      client.stderr.on('data', (chunk) => {
+        stderr = (stderr + chunk).slice(-2048);
+      });
+      client.on('error', (err) => reject(httpError(503, `Unable to start mosquitto_pub: ${err.message}`)));
+      client.on('close', (code) => {
+        if (code === 0) resolve();
+        else reject(httpError(502, `Failed to clear retained MQTT message${stderr ? `: ${stderr.trim()}` : ` (exit code ${code})`}`));
+      });
+    });
+
+    res.json({ ok: true, topic });
   }));
 
   router.get('/tables', asyncHandler(async (req, res) => {

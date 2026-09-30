@@ -251,6 +251,7 @@
             <span class="watch-status" :class="'status-' + watch.status">{{ watch.statusText }}</span>
           </div>
           <div v-if="watch.error" class="error-banner">{{ watch.error }}</div>
+          <div v-if="watch.notice" class="watch-notice">{{ watch.notice }}</div>
           <div class="watch-table-wrap">
             <table class="watch-table">
               <thead>
@@ -259,22 +260,25 @@
                   <th>value</th>
                   <th>timestamp</th>
                   <th>timestamp_offset</th>
+                  <th>Status</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-if="watch.messages.length === 0">
-                  <td colspan="4" class="muted center">Waiting for messages</td>
+                  <td colspan="5" class="muted center">Waiting for messages</td>
                 </tr>
                 <tr v-for="(message, index) in watch.messages" :key="index">
                   <td>{{ message.sender }}</td>
                   <td>{{ message.value }}</td>
                   <td>{{ message.timestamp }}</td>
                   <td :class="{ 'in-sync': message.inSync }">{{ message.offset }}</td>
+                  <td><span v-if="message.retained" class="retained-label">Retained</span></td>
                 </tr>
               </tbody>
             </table>
           </div>
           <div class="modal-actions">
+            <button @click="clearRetained" :disabled="watch.clearing">{{ watch.clearing ? 'Clearing...' : 'Clear Retained' }}</button>
             <button @click="closeWatch">Close</button>
           </div>
         </section>

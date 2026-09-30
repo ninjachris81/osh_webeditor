@@ -533,7 +533,12 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
     }
 
     const topic = `osh/${topicParts[0]}/${keyParts.join('/')}`;
-    const args = ['-h', String(mqttConfig.host), '-p', String(mqttConfig.port), '-t', topic, '-q', '0', '-F', '%t %r %p', '-d'];
+    const topics = req.query.table === 'dm_actors'
+      ? [topic, `osh/va/${keyParts.join('/')}`]
+      : [topic];
+    const args = ['-h', String(mqttConfig.host), '-p', String(mqttConfig.port)];
+    for (const subscription of topics) args.push('-t', subscription);
+    args.push('-q', '0', '-F', '%t %r %p', '-d');
     if (mqttConfig.username) args.push('-u', String(mqttConfig.username));
     if (mqttConfig.password) args.push('-P', String(mqttConfig.password));
 
@@ -546,7 +551,7 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
     });
     res.flushHeaders();
     const send = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-    send('status', { state: 'connecting', topic });
+    send('status', { state: 'connecting', topics });
 
     let closed = false;
     let hadError = false;
@@ -562,8 +567,9 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
         const secondSeparator = line.indexOf(' ', firstSeparator + 1);
         if (firstSeparator < 0 || secondSeparator < 0) continue;
         const messageTopic = line.slice(0, firstSeparator);
-        if (messageTopic !== topic) continue;
+        if (!topics.includes(messageTopic)) continue;
         send('message', {
+          topic: messageTopic,
           retained: line.slice(firstSeparator + 1, secondSeparator) === '1',
           payload: line.slice(secondSeparator + 1),
           receivedAt: Date.now(),

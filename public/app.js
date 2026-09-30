@@ -406,17 +406,19 @@ createApp({
       });
       source.addEventListener('message', (event) => {
         try {
-          const { payload, retained } = JSON.parse(event.data);
+          const { payload, retained, topic } = JSON.parse(event.data);
           if (payload === '') return;
           const data = JSON.parse(payload);
           const timestamp = Number(data.t);
           const offsetSeconds = (Date.now() - timestamp) / 1000;
           const inSync = Number.isFinite(offsetSeconds) && Math.abs(offsetSeconds) < 2;
-          const rawValue = this.currentTable === 'dm_actors'
-            ? `${Object.prototype.hasOwnProperty.call(ACTOR_COMMANDS, data.c) ? ACTOR_COMMANDS[data.c] : 'Unknown command'} (${data.c})`
-            : data.v;
+          const command = data.c === undefined
+            ? ''
+            : `${Object.prototype.hasOwnProperty.call(ACTOR_COMMANDS, data.c) ? ACTOR_COMMANDS[data.c] : 'Unknown command'} (${data.c})`;
+          const rawValue = data.v;
           this.watch.messages.unshift({
             sender: data.s ?? '',
+            command,
             value: rawValue === undefined ? '' : (typeof rawValue === 'object' ? JSON.stringify(rawValue) : String(rawValue)),
             timestamp: Number.isFinite(timestamp) ? new Date(timestamp).toLocaleString() : 'Invalid timestamp',
             offset: inSync ? 'IN_SYNC' : Number.isFinite(offsetSeconds)

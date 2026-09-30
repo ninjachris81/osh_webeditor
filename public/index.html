@@ -298,6 +298,7 @@
               <thead>
                 <tr>
                   <th>sender_id</th>
+                  <th>Command</th>
                   <th>value</th>
                   <th>timestamp</th>
                   <th>timestamp_offset</th>
@@ -306,10 +307,11 @@
               </thead>
               <tbody>
                 <tr v-if="watch.messages.length === 0">
-                  <td colspan="5" class="muted center">Waiting for messages</td>
+                  <td colspan="6" class="muted center">Waiting for messages</td>
                 </tr>
                 <tr v-for="(message, index) in watch.messages" :key="index">
                   <td>{{ message.sender }}</td>
+                  <td>{{ message.command }}</td>
                   <td>{{ message.value }}</td>
                   <td>{{ message.timestamp }}</td>
                   <td :class="{ 'in-sync': message.inSync }">{{ message.offset }}</td>

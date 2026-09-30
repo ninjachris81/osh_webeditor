@@ -683,6 +683,24 @@ button.mindmap-node:hover {
   font-size: 10px;
 }
 
+.mindmap-item-label {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mindmap-item-label small {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  font-style: italic;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @media (max-width: 700px) {
   .mindmap-area {
     gap: 14px;

@@ -327,12 +327,37 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
     const missingTable = requiredTables.find((table) => !tableNames.has(table));
     if (missingTable) throw httpError(404, `Required table not found: ${missingTable}`);
 
-    const [areasResult, roomsResult, actorsResult, valuesResult] = await Promise.all([
+    const [areasResult, roomsResult, actorsResult, valuesResult, actorColumns, valueColumns] = await Promise.all([
       pool.query(`SELECT id FROM ${quoteIdent('dm_known_areas')} ORDER BY display_order NULLS LAST, id`),
       pool.query(`SELECT id, known_area_id FROM ${quoteIdent('dm_known_rooms')} ORDER BY id`),
       pool.query(`SELECT room_id, actor_id, value_group_id FROM ${quoteIdent('dm_known_rooms_actors')} ORDER BY order_index NULLS LAST, actor_id`),
       pool.query(`SELECT room_id, value_id, value_group_id FROM ${quoteIdent('dm_known_rooms_values')} ORDER BY order_index NULLS LAST, value_id`),
+      schemaCache.columns('dm_actors'),
+      schemaCache.columns('dm_values'),
     ]);
+    const actorHasComment = actorColumns.some((column) => column.name === 'comment');
+    const valueHasComment = valueColumns.some((column) => column.name === 'comment');
+    const actorHasClassType = actorColumns.some((column) => column.name === 'class_type');
+    const valueHasClassType = valueColumns.some((column) => column.name === 'class_type');
+    const [actorDetails, valueDetails] = await Promise.all([
+      actorHasComment || actorHasClassType
+        ? pool.query(
+          `SELECT id, value_group_id${actorHasComment ? ', comment' : ''}${actorHasClassType ? ', class_type' : ''} FROM ${quoteIdent('dm_actors')}`
+        )
+        : { rows: [] },
+      valueHasComment || valueHasClassType
+        ? pool.query(
+          `SELECT id, value_group_id${valueHasComment ? ', comment' : ''}${valueHasClassType ? ', class_type' : ''} FROM ${quoteIdent('dm_values')}`
+        )
+        : { rows: [] },
+    ]);
+    const makeObjectKey = (groupId, id) => `${String(groupId)}\u0000${String(id)}`;
+    const actorDetailsByKey = new Map(actorDetails.rows.map((row) => [
+      makeObjectKey(row.value_group_id, row.id), row,
+    ]));
+    const valueDetailsByKey = new Map(valueDetails.rows.map((row) => [
+      makeObjectKey(row.value_group_id, row.id), row,
+    ]));
 
     const areas = areasResult.rows.map((area) => ({ id: area.id, rooms: [] }));
     const areaById = new Map(areas.map((area) => [String(area.id), area]));
@@ -346,14 +371,113 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
     }
     for (const row of actorsResult.rows) {
       const room = roomById.get(String(row.room_id));
-      if (room) room.actors.push({ id: row.actor_id, value_group_id: row.value_group_id });
+      if (room) {
+        const actor = { id: row.actor_id, value_group_id: row.value_group_id };
+        const details = actorDetailsByKey.get(makeObjectKey(row.value_group_id, row.actor_id));
+        if (actorHasComment) actor.comment = details?.comment ?? null;
+        if (actorHasClassType) actor.class_type = details?.class_type ?? null;
+        room.actors.push(actor);
+      }
     }
     for (const row of valuesResult.rows) {
       const room = roomById.get(String(row.room_id));
-      if (room) room.values.push({ id: row.value_id, value_group_id: row.value_group_id });
+      if (room) {
+        const value = { id: row.value_id, value_group_id: row.value_group_id };
+        const details = valueDetailsByKey.get(makeObjectKey(row.value_group_id, row.value_id));
+        if (valueHasComment) value.comment = details?.comment ?? null;
+        if (valueHasClassType) value.class_type = details?.class_type ?? null;
+        room.values.push(value);
+      }
     }
 
     res.json({ areas });
+  }));
+
+  router.get('/system-overview/values-events', asyncHandler(async (req, res) => {
+    if (!mqttConfig.host) {
+      throw httpError(503, 'MQTT is not configured. Set mqtt.host in config.json.');
+    }
+
+    const args = ['-h', String(mqttConfig.host), '-p', String(mqttConfig.port), '-t', 'osh/va/+/+', '-q', '0', '-v', '-d'];
+    if (mqttConfig.username) args.push('-u', String(mqttConfig.username));
+    if (mqttConfig.password) args.push('-P', String(mqttConfig.password));
+
+    res.status(200);
+    res.set({
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    res.flushHeaders();
+    const send = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    send('status', { state: 'connecting' });
+
+    let closed = false;
+    let hadError = false;
+    const client = spawn('mosquitto_sub', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    let output = '';
+    client.stdout.setEncoding('utf8');
+    client.stdout.on('data', (chunk) => {
+      output += chunk;
+      const lines = output.split(/\r?\n/);
+      output = lines.pop();
+      for (const line of lines) {
+        const separator = line.indexOf(' ');
+        if (separator < 0) continue;
+        const topicParts = line.slice(0, separator).split('/');
+        if (topicParts.length !== 4 || topicParts[0] !== 'osh' || topicParts[1] !== 'va') continue;
+        try {
+          const payload = JSON.parse(line.slice(separator + 1));
+          if (!Object.prototype.hasOwnProperty.call(payload, 'v')) continue;
+          send('value', {
+            value_group_id: topicParts[2],
+            id: topicParts[3],
+            value: payload.v,
+            receivedAt: Date.now(),
+          });
+        } catch (err) {
+          send('value-error', { topic: topicParts.join('/'), message: `Invalid value JSON: ${err.message}` });
+        }
+      }
+    });
+    client.stderr.setEncoding('utf8');
+    let diagnostics = '';
+    client.stderr.on('data', (chunk) => {
+      diagnostics = (diagnostics + chunk).slice(-512);
+      if (/connection lost|sending CONNECT/i.test(chunk)) send('status', { state: 'connecting' });
+      const connack = diagnostics.match(/received CONNACK \((\d+)\)/i);
+      if (!connack) return;
+      diagnostics = '';
+      if (Number(connack[1]) === 0) {
+        send('status', { state: 'connected' });
+      } else {
+        hadError = true;
+        send('error', { message: `MQTT broker rejected the connection (CONNACK ${connack[1]}).` });
+        client.kill('SIGTERM');
+      }
+    });
+    client.on('error', (err) => {
+      if (!closed) {
+        hadError = true;
+        send('error', { message: `Unable to start mosquitto_sub: ${err.message}` });
+      }
+    });
+    client.on('close', (code) => {
+      if (!closed && !hadError) {
+        hadError = true;
+        send('error', { message: `MQTT subscription stopped (exit code ${code}).` });
+      }
+    });
+
+    const heartbeat = setInterval(() => {
+      if (!res.destroyed) res.write(': keep-alive\n\n');
+    }, 25000);
+    res.on('close', () => {
+      closed = true;
+      clearInterval(heartbeat);
+      client.kill('SIGTERM');
+    });
   }));
 
   router.get('/warning-log/events', asyncHandler(async (req, res) => {
@@ -759,6 +883,30 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
       primaryKey: meta.primaryKey,
       columns: meta.columns.concat(meta.joinedColumns).map(publicColumn),
     });
+  }));
+
+  router.get('/tables/:table/row', asyncHandler(async (req, res) => {
+    const meta = await getTableMeta(req.params.table);
+    let pk;
+    try {
+      pk = JSON.parse(req.query.pk || '');
+    } catch (err) {
+      throw httpError(400, 'Primary key must be provided as a JSON object.');
+    }
+    if (!pk || typeof pk !== 'object' || Array.isArray(pk)) {
+      throw httpError(400, 'Primary key must be provided as a JSON object.');
+    }
+    const pkWhere = buildPkWhere(meta.primaryKey, meta.columns, pk);
+    const where = meta.primaryKey.map((column, index) =>
+      `base.${quoteIdent(column)} = $${index + 1}`
+    ).join(' AND ');
+    const selectList = ['base.*'].concat(meta.joinedColumns.map((column) => column.selectExpr)).join(', ');
+    const result = await pool.query(
+      `SELECT ${selectList} FROM ${buildFromClause(meta)} WHERE ${where} LIMIT 1`,
+      pkWhere.vals
+    );
+    if (result.rowCount === 0) throw httpError(404, 'Row not found.');
+    res.json({ row: result.rows[0] });
   }));
 
   router.get('/tables/:table/rows', asyncHandler(async (req, res) => {

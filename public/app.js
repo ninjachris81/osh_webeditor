@@ -78,6 +78,7 @@ createApp({
       currentTable: null,
       currentView: 'table',
       systemOverview: { areas: [], loading: false, error: null, expandedAreas: {}, expandedRooms: {} },
+      systemOverviewValueSource: null,
       schema: null,
       rows: [],
       total: 0,
@@ -112,6 +113,7 @@ createApp({
     this.closeWatch();
     this.closeStatusOverview();
     this.closeWarningLog();
+    this.closeSystemOverviewValues();
   },
 
   computed: {
@@ -176,6 +178,7 @@ createApp({
     },
 
     async selectTable(name) {
+      this.closeSystemOverviewValues();
       this.closeStatusOverview();
       this.closeWarningLog();
       this.currentView = 'table';
@@ -201,6 +204,7 @@ createApp({
     },
 
     async showSystemOverview() {
+      this.closeSystemOverviewValues();
       this.closeStatusOverview();
       this.closeWarningLog();
       this.closeWatch();
@@ -219,11 +223,38 @@ createApp({
         this.systemOverview.expandedAreas = Object.fromEntries(
           data.areas.map((area) => [String(area.id), true])
         );
+        const source = markRaw(new EventSource('/api/system-overview/values-events'));
+        this.systemOverviewValueSource = source;
+        source.addEventListener('value', (event) => {
+          const update = JSON.parse(event.data);
+          for (const area of this.systemOverview.areas) {
+            for (const room of area.rooms) {
+              for (const item of room.actors.concat(room.values)) {
+                if (String(item.value_group_id) === String(update.value_group_id) && String(item.id) === String(update.id)) {
+                  item.latestValue = update.value;
+                }
+              }
+            }
+          }
+        });
+        source.addEventListener('error', (event) => {
+          if (event.data) {
+            const error = JSON.parse(event.data);
+            this.systemOverview.error = `MQTT value stream failed: ${error.message}`;
+            source.close();
+            this.systemOverviewValueSource = null;
+          }
+        });
       } catch (err) {
         this.systemOverview.error = `Failed to load system hierarchy: ${err.message}`;
       } finally {
         this.systemOverview.loading = false;
       }
+    },
+
+    closeSystemOverviewValues() {
+      if (this.systemOverviewValueSource) this.systemOverviewValueSource.close();
+      this.systemOverviewValueSource = null;
     },
 
     toggleSystemArea(areaId) {
@@ -241,6 +272,26 @@ createApp({
       return groupId === null || groupId === undefined || groupId === ''
         ? String(item.id)
         : `${groupId}.${item.id}`;
+    },
+
+    async openMindmapItem(item, tableName) {
+      await this.selectTable(tableName);
+      if (!this.schema) return;
+      const pk = {};
+      for (const column of this.schema.primaryKey) {
+        if (!Object.prototype.hasOwnProperty.call(item, column)) {
+          this.error = `Cannot open ${tableName}: missing key column ${column}.`;
+          return;
+        }
+        pk[column] = item[column];
+      }
+      try {
+        const params = new URLSearchParams({ pk: JSON.stringify(pk) });
+        const data = await api(`/api/tables/${encodeURIComponent(tableName)}/row?${params}`);
+        this.openEdit(data.row);
+      } catch (err) {
+        this.error = `Failed to open ${tableName} row: ${err.message}`;
+      }
     },
 
     async loadFilterOptions() {
@@ -543,6 +594,7 @@ createApp({
     },
 
     showStatusOverview() {
+      this.closeSystemOverviewValues();
       this.closeStatusOverview();
       this.closeWarningLog();
       this.closeWatch();
@@ -639,6 +691,7 @@ createApp({
     },
 
     showWarningLog() {
+      this.closeSystemOverviewValues();
       this.closeWarningLog();
       this.closeStatusOverview();
       this.closeWatch();

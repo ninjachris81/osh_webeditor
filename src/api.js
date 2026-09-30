@@ -316,6 +316,95 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
     res.json({ ok: true });
   }));
 
+  router.get('/warning-log/events', asyncHandler(async (req, res) => {
+    if (!mqttConfig.host) {
+      throw httpError(503, 'MQTT is not configured. Set mqtt.host in config.json.');
+    }
+
+    const args = ['-h', String(mqttConfig.host), '-p', String(mqttConfig.port), '-t', 'osh/sw/#', '-q', '0', '-v', '-d'];
+    if (mqttConfig.username) args.push('-u', String(mqttConfig.username));
+    if (mqttConfig.password) args.push('-P', String(mqttConfig.password));
+
+    res.status(200);
+    res.set({
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    res.flushHeaders();
+    const send = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    send('status', { state: 'connecting' });
+
+    let closed = false;
+    let hadError = false;
+    const client = spawn('mosquitto_sub', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    let output = '';
+    client.stdout.setEncoding('utf8');
+    client.stdout.on('data', (chunk) => {
+      output += chunk;
+      const lines = output.split(/\r?\n/);
+      output = lines.pop();
+      for (const line of lines) {
+        const separator = line.indexOf(' ');
+        if (separator < 0) continue;
+        const topic = line.slice(0, separator);
+        const topicParts = topic.split('/');
+        if (topicParts.length !== 3 || topicParts[0] !== 'osh' || topicParts[1] !== 'sw' || !topicParts[2]) continue;
+        try {
+          const payload = JSON.parse(line.slice(separator + 1));
+          send('warning', {
+            deviceId: topicParts[2],
+            sender: payload.s ?? '',
+            message: payload.v === undefined
+              ? ''
+              : (typeof payload.v === 'object' ? JSON.stringify(payload.v) : String(payload.v)),
+            receivedAt: Date.now(),
+          });
+        } catch (err) {
+          send('warning-error', { topic, message: `Invalid warning JSON: ${err.message}` });
+        }
+      }
+    });
+    client.stderr.setEncoding('utf8');
+    let diagnostics = '';
+    client.stderr.on('data', (chunk) => {
+      diagnostics = (diagnostics + chunk).slice(-512);
+      if (/connection lost|sending CONNECT/i.test(chunk)) send('status', { state: 'connecting' });
+      const connack = diagnostics.match(/received CONNACK \((\d+)\)/i);
+      if (!connack) return;
+      diagnostics = '';
+      if (Number(connack[1]) === 0) {
+        send('status', { state: 'connected' });
+      } else {
+        hadError = true;
+        send('error', { message: `MQTT broker rejected the connection (CONNACK ${connack[1]}).` });
+        client.kill('SIGTERM');
+      }
+    });
+    client.on('error', (err) => {
+      if (!closed) {
+        hadError = true;
+        send('error', { message: `Unable to start mosquitto_sub: ${err.message}` });
+      }
+    });
+    client.on('close', (code) => {
+      if (!closed && !hadError) {
+        hadError = true;
+        send('error', { message: `MQTT subscription stopped (exit code ${code}).` });
+      }
+    });
+
+    const heartbeat = setInterval(() => {
+      if (!res.destroyed) res.write(': keep-alive\n\n');
+    }, 25000);
+    res.on('close', () => {
+      closed = true;
+      clearInterval(heartbeat);
+      client.kill('SIGTERM');
+    });
+  }));
+
   router.get('/status-overview/events', asyncHandler(async (req, res) => {
     const tables = await schemaCache.tables();
     if (!tables.some((table) => table.name === 'dm_known_devices')) {

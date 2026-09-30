@@ -546,6 +546,10 @@ select:focus {
   min-width: 760px;
 }
 
+.warning-log-grid {
+  min-width: 620px;
+}
+
 .device-presence {
   display: inline-flex;
   align-items: center;

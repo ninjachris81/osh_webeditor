@@ -13,6 +13,41 @@ const ACTOR_COMMANDS = {
   46: 'ACTOR_SHUTTER_MANUAL_UP', 47: 'ACTOR_SHUTTER_MANUAL_DOWN',
 };
 
+const VALUE_TYPES = {
+  1: 'VALUE_TYPE_BRIGHTNESS',
+  2: 'VALUE_TYPE_TEMP',
+  3: 'VALUE_TYPE_HUMIDITY',
+  4: 'VALUE_TYPE_MOTION',
+  5: 'VALUE_TYPE_WATER_FLOW',
+  6: 'VALUE_TYPE_WATER_LEVEL',
+  7: 'VALUE_TYPE_TIMESTAMP',
+  8: 'VALUE_TYPE_ENERGY_CONS',
+  9: 'VALUE_TYPE_ENERGY_CONS_TIME',
+  10: 'VALUE_TYPE_SWITCH',
+  30: 'VALUE_TYPE_SHUTTER_CLOSE_STATE',
+  31: 'VALUE_TYPE_SHUTTER_TILT_STATE',
+  32: 'VALUE_TYPE_SHUTTER_MODE',
+  33: 'VALUE_TYPE_SHUTTER_TILT_MODE',
+  34: 'VALUE_TYPE_SHUTTER_DOWN_TIME',
+  35: 'VALUE_TYPE_SHUTTER_UP_TIME',
+  40: 'VALUE_TYPE_MOTION_RADAR',
+  41: 'VALUE_TYPE_MOTION_PIR',
+  42: 'VALUE_TYPE_REED_CONTACT',
+  50: 'VALUE_TYPE_RELAY_LIGHT',
+  51: 'VALUE_TYPE_RELAY_SHUTTER',
+  52: 'VALUE_TYPE_RELAY_TEMP_VALVE',
+  53: 'VALUE_TYPE_RELAY_DOOR_OPEN',
+  60: 'VALUE_TYPE_AUDIO',
+  61: 'VALUE_TYPE_AUDIO_VOLUME',
+  62: 'VALUE_TYPE_ALARM_SOUND',
+  63: 'VALUE_TYPE_SOUND_URL',
+  70: 'VALUE_TYPE_DOOR',
+  80: 'VALUE_TYPE_HEAT_PUMP_DATA',
+  90: 'VALUE_TYPE_VIRTUAL_ACTOR',
+  91: 'VALUE_TYPE_TIMER',
+  100: 'VALUE_TYPE_STATIC_TEMP',
+};
+
 const NUMERIC_TYPES = [
   'smallint', 'integer', 'bigint', 'numeric', 'decimal',
   'real', 'double precision', 'serial', 'bigserial',
@@ -62,6 +97,8 @@ createApp({
       statusSource: null,
       statusTimer: null,
       statusNow: Date.now(),
+      warningLog: { messages: [], connection: 'connecting', connectionText: 'Connecting', error: null },
+      warningSource: null,
       editor: { show: false, mode: 'create', duplicate: false, fields: [], pk: {}, saving: false, error: null },
     };
   },
@@ -73,6 +110,7 @@ createApp({
   beforeUnmount() {
     this.closeWatch();
     this.closeStatusOverview();
+    this.closeWarningLog();
   },
 
   computed: {
@@ -80,6 +118,9 @@ createApp({
     // actor's class_type matches (ShutterActor -> shutter fields, etc.).
     visibleEditorFields() {
       return this.editor.fields.filter((f) => this.isFieldVisible(f));
+    },
+    valueTypeOptions() {
+      return Object.entries(VALUE_TYPES).map(([value, label]) => ({ value, label }));
     },
     statusDeviceColumns() {
       const device = this.statusOverview.devices[0];
@@ -132,6 +173,7 @@ createApp({
 
     async selectTable(name) {
       this.closeStatusOverview();
+      this.closeWarningLog();
       this.currentView = 'table';
       this.currentTable = name;
       this.schema = null;
@@ -293,6 +335,10 @@ createApp({
       );
     },
 
+    valueTypeMissing(field) {
+      return field.value !== '' && !this.valueTypeOptions.some((option) => option.value === field.value);
+    },
+
     openCreate() {
       this.editor = {
         show: true,
@@ -424,6 +470,7 @@ createApp({
 
     showStatusOverview() {
       this.closeStatusOverview();
+      this.closeWarningLog();
       this.closeWatch();
       this.currentView = 'overview';
       this.currentTable = null;
@@ -515,6 +562,54 @@ createApp({
       this.statusSource = null;
       if (this.statusTimer) clearInterval(this.statusTimer);
       this.statusTimer = null;
+    },
+
+    showWarningLog() {
+      this.closeWarningLog();
+      this.closeStatusOverview();
+      this.closeWatch();
+      this.currentView = 'warning-log';
+      this.currentTable = null;
+      this.warningLog = {
+        messages: [],
+        connection: 'connecting',
+        connectionText: 'Connecting',
+        error: null,
+      };
+      const source = markRaw(new EventSource('/api/warning-log/events'));
+      this.warningSource = source;
+      source.addEventListener('status', (event) => {
+        const data = JSON.parse(event.data);
+        this.warningLog.connection = data.state === 'connected' ? 'connected' : 'connecting';
+        this.warningLog.connectionText = data.state === 'connected' ? 'MQTT connected' : 'Connecting to MQTT';
+      });
+      source.addEventListener('warning', (event) => {
+        const warning = JSON.parse(event.data);
+        this.warningLog.messages.unshift(warning);
+        if (this.warningLog.messages.length > 1000) this.warningLog.messages.pop();
+      });
+      source.addEventListener('warning-error', (event) => {
+        const data = JSON.parse(event.data);
+        this.warningLog.error = `${data.topic}: ${data.message}`;
+      });
+      source.addEventListener('error', (event) => {
+        if (event.data) {
+          const data = JSON.parse(event.data);
+          this.warningLog.connection = 'error';
+          this.warningLog.connectionText = 'MQTT disconnected';
+          this.warningLog.error = data.message;
+          source.close();
+          this.warningSource = null;
+        } else if (this.warningLog.connection !== 'error') {
+          this.warningLog.connection = 'connecting';
+          this.warningLog.connectionText = 'Reconnecting to MQTT';
+        }
+      });
+    },
+
+    closeWarningLog() {
+      if (this.warningSource) this.warningSource.close();
+      this.warningSource = null;
     },
 
     async openRegisterDevice(device) {
@@ -701,6 +796,14 @@ createApp({
     formatValue(v) {
       const s = typeof v === 'object' ? JSON.stringify(v) : String(v);
       return s.length > 120 ? s.slice(0, 120) + '…' : s;
+    },
+
+    formatCellValue(tableName, columnName, value) {
+      if (columnName === 'value_type' && ['dm_actors', 'dm_values'].includes(tableName)) {
+        const label = VALUE_TYPES[Number(value)];
+        if (label) return `${label} (${value})`;
+      }
+      return this.formatValue(value);
     },
 
     formatTitle(v) {

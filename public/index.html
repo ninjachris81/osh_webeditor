@@ -16,6 +16,7 @@
 
       <ul class="nav overview-nav">
         <li><a href="#" :class="{ active: currentView === 'overview' }" @click.prevent="showStatusOverview">Status Overview</a></li>
+        <li><a href="#" :class="{ active: currentView === 'warning-log' }" @click.prevent="showWarningLog">Warning Log</a></li>
       </ul>
 
       <div class="nav-section">Main tables</div>
@@ -98,6 +99,40 @@
         <div class="status-footnote muted">Online after a heartbeat; offline after {{ statusOverview.onlineTimeoutSeconds }} seconds without one.</div>
       </section>
 
+      <section v-else-if="currentView === 'warning-log'" class="warning-log-view">
+        <header class="toolbar">
+          <h1>Warning Log</h1>
+          <span class="muted">{{ warningLog.messages.length }} message{{ warningLog.messages.length === 1 ? '' : 's' }}</span>
+          <span class="spacer"></span>
+          <span class="watch-status" :class="'status-' + warningLog.connection">{{ warningLog.connectionText }}</span>
+          <button @click="showWarningLog">Reconnect</button>
+        </header>
+        <div v-if="warningLog.error" class="error-banner">{{ warningLog.error }}</div>
+        <div class="grid-wrap">
+          <table class="grid warning-log-grid">
+            <thead>
+              <tr>
+                <th>Received</th>
+                <th>Device ID</th>
+                <th>Sender</th>
+                <th>Warning</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-if="warningLog.messages.length === 0">
+                <td colspan="4" class="muted center">Waiting for warning messages</td>
+              </tr>
+              <tr v-for="(message, index) in warningLog.messages" :key="index">
+                <td>{{ new Date(message.receivedAt).toLocaleString() }}</td>
+                <td>{{ message.deviceId }}</td>
+                <td>{{ message.sender }}</td>
+                <td>{{ message.message }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <div v-else-if="!currentTable" class="placeholder">
         <h2>Select a table on the left to view and edit its contents.</h2>
       </div>
@@ -156,7 +191,7 @@
                   <span v-else-if="col.type === 'boolean'">
                     <span class="bool" :class="row[col.name] ? 'bool-true' : 'bool-false'">{{ row[col.name] ? 'true' : 'false' }}</span>
                   </span>
-                  <span v-else>{{ formatValue(row[col.name]) }}</span>
+                  <span v-else>{{ formatCellValue(currentTable, col.name, row[col.name]) }}</span>
                 </td>
                 <td class="actions">
                   <button v-if="currentTable === 'dm_actors' || currentTable === 'dm_values'"
@@ -208,6 +243,12 @@
                   <option v-if="editor.mode === 'create' && field.value === ''" value="" disabled>(select)</option>
                   <option :value="true">true</option>
                   <option :value="false">false</option>
+                </select>
+                <select v-else-if="field.name === 'value_type' && (currentTable === 'dm_actors' || currentTable === 'dm_values')"
+                        v-model="field.value" :disabled="field.isNull || isPkLocked(field)">
+                  <option v-if="editor.mode === 'create' && field.value === ''" value="" disabled>(select)</option>
+                  <option v-if="valueTypeMissing(field)" :value="field.value">{{ field.value }} (unknown value type)</option>
+                  <option v-for="option in valueTypeOptions" :key="option.value" :value="option.value">{{ option.label }} ({{ option.value }})</option>
                 </select>
                 <select v-else-if="field.lookup && lookupOptionsFor(field).length" v-model="field.value"
                         :disabled="field.isNull || isPkLocked(field)">

@@ -114,7 +114,7 @@ function coerceValue(column, value) {
   return value;
 }
 
-function createApiRouter({ pool, schemaCache, mqttConfig = {} }) {
+function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {} }) {
   const router = express.Router();
 
   function isQuickfilterColumn(name, type) {
@@ -314,6 +314,115 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {} }) {
   router.get('/health', asyncHandler(async (req, res) => {
     await pool.query('SELECT 1');
     res.json({ ok: true });
+  }));
+
+  router.get('/status-overview/events', asyncHandler(async (req, res) => {
+    const tables = await schemaCache.tables();
+    if (!tables.some((table) => table.name === 'dm_known_devices')) {
+      throw httpError(404, 'Table not found: dm_known_devices');
+    }
+    const columns = await schemaCache.columns('dm_known_devices');
+    for (const required of ['id', 'serviceId']) {
+      if (!columns.some((column) => column.name === required)) {
+        throw httpError(500, `Required column missing from dm_known_devices: ${required}`);
+      }
+    }
+    if (!mqttConfig.host) {
+      throw httpError(503, 'MQTT is not configured. Set mqtt.host in config.json.');
+    }
+
+    const result = await pool.query(
+      `SELECT * FROM ${quoteIdent('dm_known_devices')} ORDER BY ${quoteIdent('id')}`
+    );
+    const devices = result.rows.map((row) => ({
+      ...row,
+      id: String(row.id),
+      serviceId: String(row.serviceId),
+    }));
+    const parsedTimeout = Number(
+      generalConfig.onlineTimeoutSeconds ?? mqttConfig.onlineTimeoutSeconds
+    );
+    const onlineTimeoutSeconds = Number.isFinite(parsedTimeout) && parsedTimeout > 0
+      ? parsedTimeout
+      : 60;
+    const args = ['-h', String(mqttConfig.host), '-p', String(mqttConfig.port), '-t', 'osh/dd/+/+', '-q', '0', '-v', '-d'];
+    if (mqttConfig.username) args.push('-u', String(mqttConfig.username));
+    if (mqttConfig.password) args.push('-P', String(mqttConfig.password));
+
+    res.status(200);
+    res.set({
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    res.flushHeaders();
+    const send = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    send('devices', { devices, onlineTimeoutSeconds });
+    send('status', { state: 'connecting' });
+
+    let closed = false;
+    let hadError = false;
+    const client = spawn('mosquitto_sub', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    let output = '';
+    client.stdout.setEncoding('utf8');
+    client.stdout.on('data', (chunk) => {
+      output += chunk;
+      const lines = output.split(/\r?\n/);
+      output = lines.pop();
+      for (const line of lines) {
+        const separator = line.indexOf(' ');
+        if (separator < 0) continue;
+        const topic = line.slice(0, separator);
+        const topicParts = topic.split('/');
+        if (topicParts.length !== 4 || topicParts[0] !== 'osh' || topicParts[1] !== 'dd') continue;
+        const [deviceId, serviceId] = topicParts.slice(2);
+        if (!devices.some((device) => device.id === deviceId && device.serviceId === serviceId)) continue;
+        send('heartbeat', {
+          deviceId,
+          serviceId,
+          payload: line.slice(separator + 1),
+          receivedAt: Date.now(),
+        });
+      }
+    });
+    client.stderr.setEncoding('utf8');
+    let diagnostics = '';
+    client.stderr.on('data', (chunk) => {
+      diagnostics = (diagnostics + chunk).slice(-512);
+      if (/connection lost|sending CONNECT/i.test(chunk)) send('status', { state: 'connecting' });
+      const connack = diagnostics.match(/received CONNACK \((\d+)\)/i);
+      if (!connack) return;
+      diagnostics = '';
+      if (Number(connack[1]) === 0) {
+        send('status', { state: 'connected' });
+      } else {
+        hadError = true;
+        send('error', { message: `MQTT broker rejected the connection (CONNACK ${connack[1]}).` });
+        client.kill('SIGTERM');
+      }
+    });
+    client.on('error', (err) => {
+      if (!closed) {
+        hadError = true;
+        send('error', { message: `Unable to start mosquitto_sub: ${err.message}` });
+      }
+    });
+    client.on('close', (code) => {
+      if (!closed && !hadError) {
+        hadError = true;
+        send('error', { message: `MQTT subscription stopped (exit code ${code}).` });
+      }
+    });
+
+    const heartbeat = setInterval(() => {
+      if (!res.destroyed) res.write(': keep-alive\n\n');
+    }, 25000);
+    res.on('close', () => {
+      closed = true;
+      clearInterval(heartbeat);
+      client.kill('SIGTERM');
+    });
   }));
 
   router.get('/watch', asyncHandler(async (req, res) => {

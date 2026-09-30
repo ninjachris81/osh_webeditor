@@ -514,6 +514,56 @@ select:focus {
   background: var(--bg-alt);
 }
 
+.overview-nav {
+  margin-bottom: 14px;
+}
+
+.status-overview .toolbar {
+  margin-bottom: 12px;
+}
+
+.status-overview .grid-wrap {
+  overflow: auto;
+}
+
+.status-grid {
+  min-width: 760px;
+}
+
+.device-presence {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.presence-dot {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 9px;
+  border-radius: 50%;
+  background: #818890;
+}
+
+.device-presence.online .presence-dot {
+  background: #39a85b;
+  box-shadow: 0 0 0 3px rgba(57, 168, 91, 0.16);
+}
+
+.device-presence.online {
+  color: #238243;
+}
+
+.device-presence.offline {
+  color: var(--muted);
+}
+
+.status-footnote {
+  margin-top: 10px;
+  font-size: 12px;
+}
+
 @media (max-width: 640px) {
   .watch-modal {
     padding: 16px;

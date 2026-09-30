@@ -74,6 +74,9 @@ cp config.example.json config.json
     "host": "0.0.0.0",
     "port": 8080
   },
+  "general": {
+    "onlineTimeoutSeconds": 60
+  },
   "mqtt": {
     "host": "localhost",
     "port": 1883,
@@ -87,6 +90,11 @@ The optional `mqtt` section configures the broker used by the **Watch** action f
 `dm_actors` and `dm_values`. The app subscribes to `osh/ac/<value_group_id>/<id>` for
 actors and `osh/va/<value_group_id>/<id>` for values. The installer includes
 `mosquitto-clients`, which provides the `mosquitto_sub` client used by the server.
+
+The **Status Overview** subscribes to `osh/dd/+/+` for device heartbeats.
+`general.onlineTimeoutSeconds` controls how long a device remains online without a
+message (default `60`). It displays all rows from `dm_known_devices`, along with each
+device's heartbeat health, sender, message timestamp, and human-readable service uptime.
 
 The config file path can be overridden with the `OSH_WEBAPP_CONFIG` environment variable.
 

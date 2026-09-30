@@ -41,6 +41,7 @@ createApp({
       otherTables: [],
       missingMain: [],
       currentTable: null,
+      currentView: 'table',
       schema: null,
       rows: [],
       total: 0,
@@ -57,6 +58,10 @@ createApp({
       error: null,
       watch: { show: false, topic: '', status: 'connecting', statusText: 'Connecting', error: null, messages: [] },
       watchSource: null,
+      statusOverview: { devices: [], loading: false, connection: 'connecting', connectionText: 'Connecting', error: null, onlineTimeoutSeconds: 60 },
+      statusSource: null,
+      statusTimer: null,
+      statusNow: Date.now(),
       editor: { show: false, mode: 'create', duplicate: false, fields: [], pk: {}, saving: false, error: null },
     };
   },
@@ -67,6 +72,7 @@ createApp({
 
   beforeUnmount() {
     this.closeWatch();
+    this.closeStatusOverview();
   },
 
   computed: {
@@ -74,6 +80,13 @@ createApp({
     // actor's class_type matches (ShutterActor -> shutter fields, etc.).
     visibleEditorFields() {
       return this.editor.fields.filter((f) => this.isFieldVisible(f));
+    },
+    statusDeviceColumns() {
+      const device = this.statusOverview.devices[0];
+      return device ? Object.keys(device.details) : ['id', 'serviceId'];
+    },
+    onlineDeviceCount() {
+      return this.statusOverview.devices.filter((device) => this.isDeviceOnline(device)).length;
     },
   },
 
@@ -113,6 +126,8 @@ createApp({
     },
 
     async selectTable(name) {
+      this.closeStatusOverview();
+      this.currentView = 'table';
       this.currentTable = name;
       this.schema = null;
       this.rows = [];
@@ -371,6 +386,124 @@ createApp({
       if (this.watchSource) this.watchSource.close();
       this.watchSource = null;
       if (this.watch) this.watch.show = false;
+    },
+
+    showStatusOverview() {
+      this.closeStatusOverview();
+      this.closeWatch();
+      this.currentView = 'overview';
+      this.currentTable = null;
+      this.statusOverview = {
+        devices: [],
+        loading: true,
+        connection: 'connecting',
+        connectionText: 'Connecting',
+        error: null,
+        onlineTimeoutSeconds: 60,
+      };
+      this.statusNow = Date.now();
+      this.statusTimer = setInterval(() => {
+        this.statusNow = Date.now();
+      }, 1000);
+
+      const source = markRaw(new EventSource('/api/status-overview/events'));
+      this.statusSource = source;
+      source.addEventListener('devices', (event) => {
+        const data = JSON.parse(event.data);
+        this.statusOverview.devices = data.devices.map((details) => ({
+          id: String(details.id),
+          serviceId: String(details.serviceId),
+          details,
+          lastMessageAt: null,
+          health: null,
+          uptime: null,
+        }));
+        this.statusOverview.onlineTimeoutSeconds = data.onlineTimeoutSeconds;
+        this.statusOverview.loading = false;
+      });
+      source.addEventListener('status', (event) => {
+        const data = JSON.parse(event.data);
+        this.statusOverview.connection = data.state === 'connected' ? 'connected' : 'connecting';
+        this.statusOverview.connectionText = data.state === 'connected' ? 'MQTT connected' : 'Connecting to MQTT';
+      });
+      source.addEventListener('heartbeat', (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          const message = JSON.parse(data.payload);
+          const index = this.statusOverview.devices.findIndex((device) => (
+            device.id === data.deviceId && device.serviceId === data.serviceId
+          ));
+          if (index < 0) return;
+          const device = this.statusOverview.devices[index];
+          const messageTimestamp = this.timestampMilliseconds(message.t);
+          this.statusOverview.devices.splice(index, 1, {
+            ...device,
+            lastMessageAt: data.receivedAt,
+            health: Number(message.h) === 1,
+            uptime: this.formatUptime(message.v),
+            messageTimestamp,
+            senderId: message.s,
+          });
+        } catch (err) {
+          this.statusOverview.error = `Invalid device heartbeat: ${err.message}`;
+        }
+      });
+      source.addEventListener('error', (event) => {
+        if (event.data) {
+          const data = JSON.parse(event.data);
+          this.statusOverview.connection = 'error';
+          this.statusOverview.connectionText = 'MQTT disconnected';
+          this.statusOverview.error = data.message;
+          this.statusOverview.loading = false;
+          source.close();
+          this.statusSource = null;
+        } else if (this.statusOverview.connection !== 'error') {
+          this.statusOverview.connection = 'connecting';
+          this.statusOverview.connectionText = 'Reconnecting to MQTT';
+        }
+      });
+    },
+
+    closeStatusOverview() {
+      if (this.statusSource) this.statusSource.close();
+      this.statusSource = null;
+      if (this.statusTimer) clearInterval(this.statusTimer);
+      this.statusTimer = null;
+    },
+
+    isDeviceOnline(device) {
+      if (device.lastMessageAt === null || !Number.isFinite(device.messageTimestamp)) return false;
+      const timeout = this.statusOverview.onlineTimeoutSeconds * 1000;
+      return this.statusNow - device.lastMessageAt <= timeout &&
+        Math.abs(this.statusNow - device.messageTimestamp) <= timeout;
+    },
+
+    timestampMilliseconds(timestamp) {
+      const value = Number(timestamp);
+      if (!Number.isFinite(value) || value <= 0) return NaN;
+      return value < 1e12 ? value * 1000 : value;
+    },
+
+    formatUptime(milliseconds) {
+      const totalSeconds = Math.floor(Number(milliseconds) / 1000);
+      if (!Number.isFinite(totalSeconds) || totalSeconds < 0) return 'Unknown';
+      const units = [
+        ['day', 86400],
+        ['hour', 3600],
+        ['minute', 60],
+        ['second', 1],
+      ];
+      let remaining = totalSeconds;
+      const parts = [];
+      for (const [unit, seconds] of units) {
+        const count = Math.floor(remaining / seconds);
+        if (count > 0) {
+          parts.push(`${count} ${unit}${count === 1 ? '' : 's'}`);
+          remaining %= seconds;
+        }
+        if (parts.length === 2) break;
+      }
+      return parts.length ? parts.join(' ') : '0 seconds';
     },
 
     openDuplicate(row) {

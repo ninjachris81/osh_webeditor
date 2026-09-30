@@ -2,14 +2,17 @@
   "postgres": {
     "host": "localhost",
     "port": 5432,
-    "database": "osh_db",
-    "user": "postgres",
-    "password": "changeme",
+    "database": "osh",
+    "user": "osh",
+    "password": "osh",
     "schema": "public"
   },
   "server": {
     "host": "0.0.0.0",
     "port": 8080
+  },
+  "general": {
+    "onlineTimeoutSeconds": 60
   },
   "mqtt": {
     "host": "localhost",

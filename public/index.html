@@ -14,6 +14,10 @@
         <span class="brand-sub">PostgreSQL table editor</span>
       </div>
 
+      <ul class="nav overview-nav">
+        <li><a href="#" :class="{ active: currentView === 'overview' }" @click.prevent="showStatusOverview">Status Overview</a></li>
+      </ul>
+
       <div class="nav-section">Main tables</div>
       <ul class="nav">
         <li v-for="t in mainTables" :key="t.name">
@@ -38,7 +42,55 @@
         <button class="link" @click="error = null">dismiss</button>
       </div>
 
-      <div v-if="!currentTable" class="placeholder">
+      <section v-if="currentView === 'overview'" class="status-overview">
+        <header class="toolbar">
+          <h1>Status Overview</h1>
+          <span class="muted">{{ onlineDeviceCount }} / {{ statusOverview.devices.length }} online</span>
+          <span class="spacer"></span>
+          <span class="watch-status" :class="'status-' + statusOverview.connection">{{ statusOverview.connectionText }}</span>
+          <button @click="showStatusOverview">Refresh</button>
+        </header>
+        <div v-if="statusOverview.error" class="error-banner">{{ statusOverview.error }}</div>
+        <div class="grid-wrap">
+          <table class="grid status-grid">
+            <thead>
+              <tr>
+                <th v-for="column in statusDeviceColumns" :key="column">{{ column }}</th>
+                <th>Online</th>
+                <th>Health</th>
+                <th>Uptime</th>
+                <th>Sender</th>
+                <th>Message timestamp</th>
+                <th>Last received</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-if="statusOverview.loading">
+                <td :colspan="statusDeviceColumns.length + 6" class="muted center">Loading devices&hellip;</td>
+              </tr>
+              <tr v-else-if="statusOverview.devices.length === 0">
+                <td :colspan="statusDeviceColumns.length + 6" class="muted center">No known devices</td>
+              </tr>
+              <tr v-for="device in statusOverview.devices" :key="device.id + ':' + device.serviceId">
+                <td v-for="column in statusDeviceColumns" :key="column">{{ device.details[column] === null ? 'NULL' : formatValue(device.details[column]) }}</td>
+                <td>
+                  <span class="device-presence" :class="isDeviceOnline(device) ? 'online' : 'offline'">
+                    <span class="presence-dot"></span>{{ isDeviceOnline(device) ? 'Online' : 'Offline' }}
+                  </span>
+                </td>
+                <td>{{ device.health === null ? 'Unknown' : device.health ? 'Healthy' : 'Unhealthy' }}</td>
+                <td>{{ device.uptime === null ? '—' : device.uptime }}</td>
+                <td>{{ device.senderId || '—' }}</td>
+                <td>{{ device.messageTimestamp ? new Date(device.messageTimestamp).toLocaleString() : '—' }}</td>
+                <td>{{ device.lastMessageAt ? new Date(device.lastMessageAt).toLocaleString() : '—' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="status-footnote muted">Online after a heartbeat; offline after {{ statusOverview.onlineTimeoutSeconds }} seconds without one.</div>
+      </section>
+
+      <div v-else-if="!currentTable" class="placeholder">
         <h2>Select a table on the left to view and edit its contents.</h2>
       </div>
 

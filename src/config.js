@@ -16,6 +16,9 @@ const DEFAULTS = {
     host: '0.0.0.0',
     port: 8080,
   },
+  general: {
+    onlineTimeoutSeconds: 60,
+  },
   mqtt: {
     host: 'localhost',
     port: 1883,
@@ -44,6 +47,7 @@ function loadConfig() {
   const config = {
     postgres: { ...DEFAULTS.postgres, ...(parsed.postgres || {}) },
     server: { ...DEFAULTS.server, ...(parsed.server || {}) },
+    general: { ...DEFAULTS.general, ...(parsed.general || {}) },
     mqtt: { ...DEFAULTS.mqtt, ...(parsed.mqtt || {}) },
   };
 

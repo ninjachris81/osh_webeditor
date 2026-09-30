@@ -319,6 +319,12 @@
             </table>
           </div>
           <div class="modal-actions">
+            <template v-if="watch.table === 'dm_actors'">
+              <select v-model="watch.command" aria-label="Actor command" :disabled="watch.sending">
+                <option v-for="option in actorCommandOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+              </select>
+              <button @click="sendActorCommand" :disabled="watch.sending">{{ watch.sending ? 'Sending...' : 'Send' }}</button>
+            </template>
             <button @click="clearRetained" :disabled="watch.clearing">{{ watch.clearing ? 'Clearing...' : 'Clear Retained' }}</button>
             <button @click="closeWatch">Close</button>
           </div>

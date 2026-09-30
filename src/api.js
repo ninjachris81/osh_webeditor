@@ -651,6 +651,46 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
     res.json({ ok: true, topic });
   }));
 
+  router.post('/watch/send-command', asyncHandler(async (req, res) => {
+    const { table, value_group_id: valueGroupId, id, command } = req.body || {};
+    if (table !== 'dm_actors') {
+      throw httpError(400, 'Actor commands can only be sent to dm_actors topics.');
+    }
+    if ([valueGroupId, id].some((part) => (typeof part !== 'string' && typeof part !== 'number') || String(part) === '' || /[\/# +\u0000]/.test(String(part)))) {
+      throw httpError(400, 'A valid value_group_id and id are required.');
+    }
+    const commandId = Number(command);
+    const allowedCommands = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 21, 40, 41, 42, 43, 44, 46, 47]);
+    if (!Number.isInteger(commandId) || !allowedCommands.has(commandId)) {
+      throw httpError(400, 'Unknown actor command.');
+    }
+    if (!mqttConfig.host) {
+      throw httpError(503, 'MQTT is not configured. Set mqtt.host in config.json.');
+    }
+
+    const topic = `osh/ac/${valueGroupId}/${id}`;
+    const payload = JSON.stringify({ c: commandId, s: 'osh-webeditor', t: Date.now() });
+    const args = ['-h', String(mqttConfig.host), '-p', String(mqttConfig.port), '-t', topic, '-q', '0', '-m', payload];
+    if (mqttConfig.username) args.push('-u', String(mqttConfig.username));
+    if (mqttConfig.password) args.push('-P', String(mqttConfig.password));
+
+    await new Promise((resolve, reject) => {
+      const client = spawn('mosquitto_pub', args, { stdio: ['ignore', 'ignore', 'pipe'] });
+      let stderr = '';
+      client.stderr.setEncoding('utf8');
+      client.stderr.on('data', (chunk) => {
+        stderr = (stderr + chunk).slice(-2048);
+      });
+      client.on('error', (err) => reject(httpError(503, `Unable to start mosquitto_pub: ${err.message}`)));
+      client.on('close', (code) => {
+        if (code === 0) resolve();
+        else reject(httpError(502, `Failed to send actor command${stderr ? `: ${stderr.trim()}` : ` (exit code ${code})`}`));
+      });
+    });
+
+    res.json({ ok: true, topic, command: commandId });
+  }));
+
   router.get('/tables', asyncHandler(async (req, res) => {
     const tables = await schemaCache.tables();
     const names = new Set(tables.map((t) => t.name));

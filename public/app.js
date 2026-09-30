@@ -122,6 +122,9 @@ createApp({
     valueTypeOptions() {
       return Object.entries(VALUE_TYPES).map(([value, label]) => ({ value, label }));
     },
+    actorCommandOptions() {
+      return Object.entries(ACTOR_COMMANDS).map(([value, label]) => ({ value, label }));
+    },
     statusDeviceColumns() {
       const device = this.statusOverview.devices[0];
       return device
@@ -385,6 +388,8 @@ createApp({
         error: null,
         notice: null,
         clearing: false,
+        command: '1',
+        sending: false,
         messages: [],
       };
       const source = markRaw(new EventSource(`/api/watch?${params}`));
@@ -465,6 +470,29 @@ createApp({
         this.watch.error = err.message;
       } finally {
         this.watch.clearing = false;
+      }
+    },
+
+    async sendActorCommand() {
+      this.watch.sending = true;
+      this.watch.error = null;
+      this.watch.notice = null;
+      try {
+        await api('/api/watch/send-command', {
+          method: 'POST',
+          body: {
+            table: this.watch.table,
+            value_group_id: this.watch.value_group_id,
+            id: this.watch.id,
+            command: this.watch.command,
+          },
+        });
+        const commandName = ACTOR_COMMANDS[this.watch.command];
+        this.watch.notice = `${commandName} sent.`;
+      } catch (err) {
+        this.watch.error = err.message;
+      } finally {
+        this.watch.sending = false;
       }
     },
 

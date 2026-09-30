@@ -16,6 +16,12 @@ const DEFAULTS = {
     host: '0.0.0.0',
     port: 8080,
   },
+  mqtt: {
+    host: 'localhost',
+    port: 1883,
+    username: '',
+    password: '',
+  },
 };
 
 function loadConfig() {
@@ -38,6 +44,7 @@ function loadConfig() {
   const config = {
     postgres: { ...DEFAULTS.postgres, ...(parsed.postgres || {}) },
     server: { ...DEFAULTS.server, ...(parsed.server || {}) },
+    mqtt: { ...DEFAULTS.mqtt, ...(parsed.mqtt || {}) },
   };
 
   if (!config.postgres.database) {

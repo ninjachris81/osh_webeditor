@@ -449,3 +449,79 @@ select:focus {
   gap: 8px;
   margin-top: 16px;
 }
+
+.watch-modal {
+  width: 900px;
+}
+
+.watch-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.watch-heading h2 {
+  margin-bottom: 4px;
+}
+
+.watch-topic {
+  color: var(--muted);
+  font: 12px monospace;
+  overflow-wrap: anywhere;
+}
+
+.watch-status {
+  border-left: 3px solid var(--muted);
+  padding-left: 8px;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.watch-status.status-connected,
+.in-sync {
+  color: var(--success, #58a66a);
+}
+
+.watch-status.status-error {
+  color: var(--danger, #d06464);
+}
+
+.watch-table-wrap {
+  max-height: min(60vh, 520px);
+  overflow: auto;
+  border: 1px solid var(--border);
+}
+
+.watch-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.watch-table th,
+.watch-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.watch-table th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-alt);
+}
+
+@media (max-width: 640px) {
+  .watch-modal {
+    padding: 16px;
+  }
+
+  .watch-table th,
+  .watch-table td {
+    padding: 7px 6px;
+    font-size: 11px;
+  }
+}

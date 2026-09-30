@@ -26,7 +26,7 @@ app.get('/vendor/vue.js', (req, res) => {
   res.sendFile(require.resolve('vue/dist/vue.global.prod.js'));
 });
 
-app.use('/api', createApiRouter({ pool, schemaCache }));
+app.use('/api', createApiRouter({ pool, schemaCache, mqttConfig: config.mqtt }));
 
 const publicDir = path.join(__dirname, 'public');
 app.use(express.static(publicDir));

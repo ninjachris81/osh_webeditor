@@ -10,5 +10,11 @@
   "server": {
     "host": "0.0.0.0",
     "port": 8080
+  },
+  "mqtt": {
+    "host": "localhost",
+    "port": 1883,
+    "username": "",
+    "password": ""
   }
 }

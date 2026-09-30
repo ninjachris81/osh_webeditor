@@ -1,7 +1,17 @@
 /* global Vue */
 'use strict';
 
-const { createApp } = Vue;
+const { createApp, markRaw } = Vue;
+
+const ACTOR_COMMANDS = {
+  1: 'ACTOR_ON', 2: 'ACTOR_OFF', 3: 'ACTOR_UP', 4: 'ACTOR_DOWN',
+  5: 'ACTOR_START', 6: 'ACTOR_STOP', 7: 'ACTOR_PAUSE', 8: 'ACTOR_TOGGLE',
+  9: 'ACTOR_SET_VALUE', 10: 'ACTOR_TRIGGER_SCRIPT', 20: 'ACTOR_NEXT',
+  21: 'ACTOR_PREVIOUS', 40: 'ACTOR_SHUTTER_HALF_CLOSE',
+  41: 'ACTOR_SHUTTER_HALF_OPEN', 42: 'ACTOR_SHUTTER_FULL_OPEN',
+  43: 'ACTOR_SHUTTER_TURN_OPEN', 44: 'ACTOR_SHUTTER_TURN_CLOSE',
+  46: 'ACTOR_SHUTTER_MANUAL_UP', 47: 'ACTOR_SHUTTER_MANUAL_DOWN',
+};
 
 const NUMERIC_TYPES = [
   'smallint', 'integer', 'bigint', 'numeric', 'decimal',
@@ -45,12 +55,18 @@ createApp({
       lookupOptions: {},
       loading: false,
       error: null,
+      watch: { show: false, topic: '', status: 'connecting', statusText: 'Connecting', error: null, messages: [] },
+      watchSource: null,
       editor: { show: false, mode: 'create', duplicate: false, fields: [], pk: {}, saving: false, error: null },
     };
   },
 
   created() {
     this.loadTables();
+  },
+
+  beforeUnmount() {
+    this.closeWatch();
   },
 
   computed: {
@@ -281,6 +297,80 @@ createApp({
         saving: false,
         error: null,
       };
+    },
+
+    openWatch(row) {
+      this.closeWatch();
+      const kind = this.currentTable === 'dm_actors' ? 'ac' : 'va';
+      const topic = `osh/${kind}/${row.value_group_id}/${row.id}`;
+      const params = new URLSearchParams({
+        table: this.currentTable,
+        value_group_id: row.value_group_id,
+        id: row.id,
+      });
+      this.watch = {
+        show: true,
+        topic,
+        status: 'connecting',
+        statusText: 'Connecting',
+        error: null,
+        messages: [],
+      };
+      const source = markRaw(new EventSource(`/api/watch?${params}`));
+      this.watchSource = source;
+      source.addEventListener('status', (event) => {
+        const status = JSON.parse(event.data);
+        if (status.state === 'connected') {
+          this.watch.status = 'connected';
+          this.watch.statusText = 'Connected';
+        } else if (status.state === 'connecting') {
+          this.watch.status = 'connecting';
+          this.watch.statusText = 'Reconnecting';
+        }
+      });
+      source.addEventListener('message', (event) => {
+        try {
+          const { payload } = JSON.parse(event.data);
+          const data = JSON.parse(payload);
+          const timestamp = Number(data.t);
+          const offsetSeconds = (Date.now() - timestamp) / 1000;
+          const inSync = Number.isFinite(offsetSeconds) && Math.abs(offsetSeconds) < 2;
+          const rawValue = this.currentTable === 'dm_actors'
+            ? `${Object.prototype.hasOwnProperty.call(ACTOR_COMMANDS, data.c) ? ACTOR_COMMANDS[data.c] : 'Unknown command'} (${data.c})`
+            : data.v;
+          this.watch.messages.unshift({
+            sender: data.s ?? '',
+            value: rawValue === undefined ? '' : (typeof rawValue === 'object' ? JSON.stringify(rawValue) : String(rawValue)),
+            timestamp: Number.isFinite(timestamp) ? new Date(timestamp).toLocaleString() : 'Invalid timestamp',
+            offset: inSync ? 'IN_SYNC' : Number.isFinite(offsetSeconds)
+              ? `${offsetSeconds >= 0 ? '+' : ''}${offsetSeconds.toFixed(2)} s`
+              : 'Invalid timestamp',
+            inSync,
+          });
+          if (this.watch.messages.length > 500) this.watch.messages.pop();
+        } catch (err) {
+          this.watch.error = `Invalid MQTT JSON payload: ${err.message}`;
+        }
+      });
+      source.addEventListener('error', (event) => {
+        if (event.data) {
+          const error = JSON.parse(event.data);
+          this.watch.status = 'error';
+          this.watch.statusText = 'Disconnected';
+          this.watch.error = error.message;
+          source.close();
+          this.watchSource = null;
+        } else if (this.watch.status !== 'error') {
+          this.watch.status = 'connecting';
+          this.watch.statusText = 'Reconnecting';
+        }
+      });
+    },
+
+    closeWatch() {
+      if (this.watchSource) this.watchSource.close();
+      this.watchSource = null;
+      if (this.watch) this.watch.show = false;
     },
 
     openDuplicate(row) {

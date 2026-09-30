@@ -1,6 +1,7 @@
 'use strict';
 
 const express = require('express');
+const { spawn } = require('child_process');
 
 // The main OSH datamodel tables, in the order they should appear in the UI.
 const MAIN_TABLES = [
@@ -113,7 +114,7 @@ function coerceValue(column, value) {
   return value;
 }
 
-function createApiRouter({ pool, schemaCache }) {
+function createApiRouter({ pool, schemaCache, mqttConfig = {} }) {
   const router = express.Router();
 
   function isQuickfilterColumn(name, type) {
@@ -313,6 +314,92 @@ function createApiRouter({ pool, schemaCache }) {
   router.get('/health', asyncHandler(async (req, res) => {
     await pool.query('SELECT 1');
     res.json({ ok: true });
+  }));
+
+  router.get('/watch', asyncHandler(async (req, res) => {
+    const topicParts = {
+      dm_actors: ['ac', req.query.value_group_id, req.query.id],
+      dm_values: ['va', req.query.value_group_id, req.query.id],
+    }[req.query.table];
+    if (!topicParts) {
+      throw httpError(400, 'MQTT watch is only available for dm_actors and dm_values.');
+    }
+    const keyParts = topicParts.slice(1);
+    if (keyParts.some((part) => typeof part !== 'string' || part === '' || /[\/# +\u0000]/.test(part))) {
+      throw httpError(400, 'A valid value_group_id and id are required.');
+    }
+    if (!mqttConfig.host) {
+      throw httpError(503, 'MQTT is not configured. Set mqtt.host in config.json.');
+    }
+
+    const topic = `osh/${topicParts[0]}/${keyParts.join('/')}`;
+    const args = ['-h', String(mqttConfig.host), '-p', String(mqttConfig.port), '-t', topic, '-q', '0', '-d'];
+    if (mqttConfig.username) args.push('-u', String(mqttConfig.username));
+    if (mqttConfig.password) args.push('-P', String(mqttConfig.password));
+
+    res.status(200);
+    res.set({
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    res.flushHeaders();
+    const send = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    send('status', { state: 'connecting', topic });
+
+    let closed = false;
+    let hadError = false;
+    const client = spawn('mosquitto_sub', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    let output = '';
+    client.stdout.setEncoding('utf8');
+    client.stdout.on('data', (chunk) => {
+      output += chunk;
+      const lines = output.split(/\r?\n/);
+      output = lines.pop();
+      for (const payload of lines) {
+        if (payload) send('message', { payload, receivedAt: Date.now() });
+      }
+    });
+    client.stderr.setEncoding('utf8');
+    let diagnostics = '';
+    client.stderr.on('data', (chunk) => {
+      diagnostics = (diagnostics + chunk).slice(-512);
+      if (/connection lost|sending CONNECT/i.test(chunk)) {
+        send('status', { state: 'connecting' });
+      }
+      const connack = diagnostics.match(/received CONNACK \((\d+)\)/i);
+      if (!connack) return;
+      diagnostics = '';
+      if (Number(connack[1]) === 0) {
+        send('status', { state: 'connected' });
+      } else {
+        hadError = true;
+        send('error', { message: `MQTT broker rejected the connection (CONNACK ${connack[1]}).` });
+        client.kill('SIGTERM');
+      }
+    });
+    client.on('error', (err) => {
+      if (!closed) {
+        hadError = true;
+        send('error', { message: `Unable to start mosquitto_sub: ${err.message}` });
+      }
+    });
+    client.on('close', (code) => {
+      if (!closed && !hadError) {
+        hadError = true;
+        send('error', { message: `MQTT subscription stopped (exit code ${code}).` });
+      }
+    });
+
+    const heartbeat = setInterval(() => {
+      if (!res.destroyed) res.write(': keep-alive\n\n');
+    }, 25000);
+    res.on('close', () => {
+      closed = true;
+      clearInterval(heartbeat);
+      client.kill('SIGTERM');
+    });
   }));
 
   router.get('/tables', asyncHandler(async (req, res) => {

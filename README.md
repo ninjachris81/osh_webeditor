@@ -73,9 +73,20 @@ cp config.example.json config.json
   "server": {
     "host": "0.0.0.0",
     "port": 8080
+  },
+  "mqtt": {
+    "host": "localhost",
+    "port": 1883,
+    "username": "",
+    "password": ""
   }
 }
 ```
+
+The optional `mqtt` section configures the broker used by the **Watch** action for
+`dm_actors` and `dm_values`. The app subscribes to `osh/ac/<value_group_id>/<id>` for
+actors and `osh/va/<value_group_id>/<id>` for values. The installer includes
+`mosquitto-clients`, which provides the `mosquitto_sub` client used by the server.
 
 The config file path can be overridden with the `OSH_WEBAPP_CONFIG` environment variable.
 

@@ -47,6 +47,7 @@ apt-get install -y --no-install-recommends \
   gnupg \
   git \
   build-essential \
+  mosquitto-clients \
   nodejs \
   npm \
   libunbound8 \

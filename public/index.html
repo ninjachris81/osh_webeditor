@@ -99,6 +99,8 @@
                   <span v-else>{{ formatValue(row[col.name]) }}</span>
                 </td>
                 <td class="actions">
+                  <button v-if="currentTable === 'dm_actors' || currentTable === 'dm_values'"
+                          class="small" @click="openWatch(row)">Watch</button>
                   <button class="small" @click="openEdit(row)" :disabled="schema.primaryKey.length === 0">Edit</button>
                   <button class="small" @click="openDuplicate(row)">Duplicate</button>
                   <button class="small danger" @click="deleteRow(row)" :disabled="schema.primaryKey.length === 0">Delete</button>
@@ -177,6 +179,45 @@
             <button class="primary" @click="saveRow" :disabled="editor.saving">{{ editor.saving ? 'Saving...' : 'Save' }}</button>
           </div>
         </div>
+      </div>
+
+      <div class="modal-backdrop" v-if="watch.show" @click.self="closeWatch">
+        <section class="modal watch-modal" role="dialog" aria-modal="true" aria-labelledby="watch-title">
+          <div class="watch-heading">
+            <div>
+              <h2 id="watch-title">MQTT watch</h2>
+              <div class="watch-topic">{{ watch.topic }}</div>
+            </div>
+            <span class="watch-status" :class="'status-' + watch.status">{{ watch.statusText }}</span>
+          </div>
+          <div v-if="watch.error" class="error-banner">{{ watch.error }}</div>
+          <div class="watch-table-wrap">
+            <table class="watch-table">
+              <thead>
+                <tr>
+                  <th>sender_id</th>
+                  <th>value</th>
+                  <th>timestamp</th>
+                  <th>timestamp_offset</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-if="watch.messages.length === 0">
+                  <td colspan="4" class="muted center">Waiting for messages</td>
+                </tr>
+                <tr v-for="(message, index) in watch.messages" :key="index">
+                  <td>{{ message.sender }}</td>
+                  <td>{{ message.value }}</td>
+                  <td>{{ message.timestamp }}</td>
+                  <td :class="{ 'in-sync': message.inSync }">{{ message.offset }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="modal-actions">
+            <button @click="closeWatch">Close</button>
+          </div>
+        </section>
       </div>
     </main>
   </div>

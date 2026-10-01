@@ -575,7 +575,7 @@ select:focus {
   align-items: center;
   gap: 9px;
   min-width: 180px;
-  height: 120px;
+  height: 130px;
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 5px;
@@ -680,7 +680,7 @@ button.mindmap-node:hover {
   gap: 7px;
   width: auto;
   min-width: 180px;
-  height: 120px;
+  height: 130px;
   max-width: 190px;
   white-space: normal;
 }

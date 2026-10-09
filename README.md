@@ -40,7 +40,7 @@ deletes its subtype rows (they hold foreign keys to the base row).
 
 - Browse all tables: pagination, sorting, full-text-ish search across all columns
 - Quickfilters in the table header for `value_group_id`, `group_id`, `known_area_id`,
-  `class_type` and every boolean column (dropdown of distinct values, incl. NULL)
+  `class_type`, `value_type` and every boolean column (dropdown of distinct values, incl. NULL)
 - Lookup comboboxes in the row editor for foreign-key columns
   (e.g. `dm_known_rooms.known_area_id` lists all `dm_known_areas.name` and stores the id)
 - `value_group_id` (part of the composite primary key in `dm_actors` / `dm_values`) is

@@ -21,7 +21,7 @@ const MAIN_TABLES = [
 
 // Columns that get a per-value quickfilter dropdown in the table header
 // (any boolean column gets one too - see isQuickfilterColumn).
-const QUICKFILTER_COLUMNS = new Set(['value_group_id', 'group_id', 'known_area_id', 'class_type']);
+const QUICKFILTER_COLUMNS = new Set(['value_group_id', 'group_id', 'known_area_id', 'class_type', 'value_type']);
 
 // Columns that are edited via a combobox of values looked up from another
 // table. The stored value is <refColumn>, the dropdown label is <labelColumn>.

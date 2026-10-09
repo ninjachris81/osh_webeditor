@@ -797,9 +797,10 @@ createApp({
     },
 
     isDeviceOnline(device) {
-      if (device.lastMessageAt === null || !Number.isFinite(device.messageTimestamp)) return false;
+      if (device.lastMessageAt === null) return false;
       const timeout = this.statusOverview.onlineTimeoutSeconds * 1000;
-      return this.statusNow - device.lastMessageAt <= timeout &&
+      if (this.statusNow - device.lastMessageAt > timeout) return false;
+      return !Number.isFinite(device.messageTimestamp) ||
         Math.abs(this.statusNow - device.messageTimestamp) <= timeout;
     },
 

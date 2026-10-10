@@ -346,6 +346,22 @@ select:focus {
   color: var(--muted);
 }
 
+.health-status {
+  font-weight: 600;
+}
+
+.health-healthy {
+  color: #7bd88f;
+}
+
+.health-unhealthy {
+  color: var(--danger);
+}
+
+.health-unknown {
+  color: var(--muted);
+}
+
 .actions-col {
   width: 1%;
 }

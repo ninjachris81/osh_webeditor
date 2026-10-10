@@ -161,7 +161,14 @@
                     <span class="presence-dot"></span>{{ isDeviceOnline(device) ? 'Online' : 'Offline' }}
                   </span>
                 </td>
-                <td>{{ device.health === null ? 'Unknown' : device.health ? 'Healthy' : 'Unhealthy' }}</td>
+                <td>
+                  <span
+                    class="health-status"
+                    :class="device.health === null ? 'health-unknown' : device.health ? 'health-healthy' : 'health-unhealthy'"
+                  >
+                    {{ device.health === null ? 'Unknown' : device.health ? 'Healthy' : 'Unhealthy' }}
+                  </span>
+                </td>
                 <td>{{ device.uptime === null ? '—' : device.uptime }}</td>
                 <td>{{ device.senderId || '—' }}</td>
                 <td>{{ device.messageTimestamp ? new Date(device.messageTimestamp).toLocaleString() : '—' }}</td>

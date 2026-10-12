@@ -45,6 +45,11 @@ const EDITABLE_PK_COLUMNS = {
   dm_values: ['value_group_id'],
 };
 
+const ROOM_ASSIGNMENTS = {
+  dm_actors: { table: 'dm_known_rooms_actors', itemColumn: 'actor_id' },
+  dm_values: { table: 'dm_known_rooms_values', itemColumn: 'value_id' },
+};
+
 // Sentinel used by the UI to filter for NULL values via quickfilters.
 const NULL_FILTER = '__NULL__';
 
@@ -1013,6 +1018,87 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
         LIMIT 1000`
     );
     res.json({ options: result.rows });
+  }));
+
+  router.get('/tables/:table/room-assignments', asyncHandler(async (req, res) => {
+    const tableName = req.params.table;
+    const assignment = ROOM_ASSIGNMENTS[tableName];
+    if (!assignment) throw httpError(400, 'Room assignments are only available for dm_actors and dm_values.');
+
+    const meta = await getTableMeta(tableName);
+    const keyColumns = ['id', 'value_group_id'].map((name) => meta.columns.find((column) => column.name === name));
+    if (keyColumns.some((column) => !column)) {
+      throw httpError(500, `The ${tableName} table is missing required key columns.`);
+    }
+    const id = coerceValue(keyColumns[0], req.query.id);
+    const valueGroupId = coerceValue(keyColumns[1], req.query.value_group_id);
+    if (id === null || valueGroupId === null) {
+      throw httpError(400, 'Both id and value_group_id are required.');
+    }
+
+    const [roomsResult, assignmentsResult] = await Promise.all([
+      pool.query(`SELECT id, known_area_id FROM ${quoteIdent('dm_known_rooms')} ORDER BY id`),
+      pool.query(
+        `SELECT room_id FROM ${quoteIdent(assignment.table)}
+          WHERE ${quoteIdent(assignment.itemColumn)} = $1 AND ${quoteIdent('value_group_id')} = $2
+          ORDER BY ${quoteIdent('room_id')}`,
+        [id, valueGroupId]
+      ),
+    ]);
+    res.json({
+      rooms: roomsResult.rows,
+      assignedRoomIds: assignmentsResult.rows.map((row) => row.room_id),
+    });
+  }));
+
+  router.post('/tables/:table/room-assignments', asyncHandler(async (req, res) => {
+    const tableName = req.params.table;
+    const assignment = ROOM_ASSIGNMENTS[tableName];
+    if (!assignment) throw httpError(400, 'Room assignments are only available for dm_actors and dm_values.');
+
+    const meta = await getTableMeta(tableName);
+    const keyColumns = ['id', 'value_group_id'].map((name) => meta.columns.find((column) => column.name === name));
+    if (keyColumns.some((column) => !column)) {
+      throw httpError(500, `The ${tableName} table is missing required key columns.`);
+    }
+    const { id: rawId, value_group_id: rawValueGroupId, room_id: rawRoomId } = req.body || {};
+    const id = coerceValue(keyColumns[0], rawId);
+    const valueGroupId = coerceValue(keyColumns[1], rawValueGroupId);
+    const roomColumn = (await schemaCache.columns('dm_known_rooms')).find((column) => column.name === 'id');
+    if (!roomColumn) throw httpError(500, 'The dm_known_rooms table is missing its id column.');
+    const roomId = coerceValue(roomColumn, rawRoomId);
+    if (id === null || valueGroupId === null || roomId === null) {
+      throw httpError(400, 'id, value_group_id, and room_id are required.');
+    }
+
+    const mappingColumns = await schemaCache.columns(assignment.table);
+    const orderColumn = mappingColumns.find((column) => column.name === 'order_index');
+    const columns = ['room_id', assignment.itemColumn, 'value_group_id'];
+    const values = [roomId, id, valueGroupId];
+    if (orderColumn && !orderColumn.nullable && orderColumn.default === null) {
+      const orderResult = await pool.query(
+        `SELECT COALESCE(MAX(${quoteIdent('order_index')}), 0) + 1 AS next_order
+           FROM ${quoteIdent(assignment.table)} WHERE ${quoteIdent('room_id')} = $1`,
+        [roomId]
+      );
+      columns.push('order_index');
+      values.push(orderResult.rows[0].next_order);
+    }
+
+    try {
+      const placeholders = values.map((_, index) => `$${index + 1}`);
+      const result = await pool.query(
+        `INSERT INTO ${quoteIdent(assignment.table)} (${columns.map(quoteIdent).join(', ')})
+         VALUES (${placeholders.join(', ')}) RETURNING *`,
+        values
+      );
+      res.status(201).json({ assignment: result.rows[0] });
+    } catch (err) {
+      if (err.code === '23505') {
+        throw httpError(409, 'This item is already assigned to that room.');
+      }
+      throw err;
+    }
   }));
 
   router.post('/tables/:table/rows', asyncHandler(async (req, res) => {

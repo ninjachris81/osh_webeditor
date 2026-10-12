@@ -466,6 +466,36 @@ select:focus {
   margin-top: 16px;
 }
 
+.room-assignments {
+  margin-top: 20px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.room-assignments h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.assigned-room-list {
+  margin: 0 0 12px;
+  padding-left: 20px;
+}
+
+.assigned-room-list small {
+  color: var(--muted);
+}
+
+.room-assignment-add {
+  display: flex;
+  gap: 8px;
+}
+
+.room-assignment-add select {
+  flex: 1;
+  min-width: 0;
+}
+
 .watch-modal {
   width: 900px;
 }

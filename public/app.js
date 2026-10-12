@@ -102,7 +102,16 @@ createApp({
       statusNow: Date.now(),
       warningLog: { messages: [], connection: 'connecting', connectionText: 'Connecting', error: null },
       warningSource: null,
-      editor: { show: false, mode: 'create', duplicate: false, fields: [], pk: {}, saving: false, error: null },
+      editor: {
+        show: false,
+        mode: 'create',
+        duplicate: false,
+        fields: [],
+        pk: {},
+        saving: false,
+        error: null,
+        roomAssignments: { enabled: false, loading: false, rooms: [], assignedRoomIds: [], selectedRoomId: '', adding: false, error: null },
+      },
     };
   },
 
@@ -462,7 +471,65 @@ createApp({
         pk,
         saving: false,
         error: null,
+        roomAssignments: {
+          enabled: ['dm_actors', 'dm_values'].includes(this.currentTable),
+          loading: false,
+          rooms: [],
+          assignedRoomIds: [],
+          selectedRoomId: '',
+          adding: false,
+          error: null,
+        },
       };
+      if (this.editor.roomAssignments.enabled) this.loadRoomAssignments();
+    },
+
+    async loadRoomAssignments() {
+      const roomAssignments = this.editor.roomAssignments;
+      roomAssignments.loading = true;
+      roomAssignments.error = null;
+      try {
+        const params = new URLSearchParams({
+          id: this.editor.pk.id,
+          value_group_id: this.editor.pk.value_group_id,
+        });
+        const data = await api(
+          `/api/tables/${encodeURIComponent(this.currentTable)}/room-assignments?${params}`
+        );
+        roomAssignments.rooms = data.rooms;
+        roomAssignments.assignedRoomIds = data.assignedRoomIds.map(String);
+      } catch (err) {
+        roomAssignments.error = `Failed to load assigned rooms: ${err.message}`;
+      } finally {
+        roomAssignments.loading = false;
+      }
+    },
+
+    isRoomAssigned(roomId) {
+      return this.editor.roomAssignments.assignedRoomIds.includes(String(roomId));
+    },
+
+    async addRoomAssignment() {
+      const roomAssignments = this.editor.roomAssignments;
+      if (!roomAssignments.selectedRoomId || roomAssignments.adding) return;
+      roomAssignments.adding = true;
+      roomAssignments.error = null;
+      try {
+        await api(`/api/tables/${encodeURIComponent(this.currentTable)}/room-assignments`, {
+          method: 'POST',
+          body: {
+            id: this.editor.pk.id,
+            value_group_id: this.editor.pk.value_group_id,
+            room_id: roomAssignments.selectedRoomId,
+          },
+        });
+        roomAssignments.selectedRoomId = '';
+        await this.loadRoomAssignments();
+      } catch (err) {
+        roomAssignments.error = `Failed to assign room: ${err.message}`;
+      } finally {
+        roomAssignments.adding = false;
+      }
     },
 
     openWatch(row, tableName = this.currentTable) {

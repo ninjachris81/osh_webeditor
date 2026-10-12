@@ -359,6 +359,34 @@
             </div>
           </div>
 
+          <section v-if="editor.roomAssignments && editor.roomAssignments.enabled" class="room-assignments">
+            <h3>Assigned rooms</h3>
+            <div v-if="editor.roomAssignments.error" class="error-banner">{{ editor.roomAssignments.error }}</div>
+            <div v-if="editor.roomAssignments.loading" class="muted">Loading rooms&hellip;</div>
+            <ul v-else-if="editor.roomAssignments.assignedRoomIds.length" class="assigned-room-list">
+              <li v-for="roomId in editor.roomAssignments.assignedRoomIds" :key="roomId">
+                {{ roomId }}
+                <small v-if="editor.roomAssignments.rooms.find(room => String(room.id) === roomId)">
+                  (area {{ editor.roomAssignments.rooms.find(room => String(room.id) === roomId).known_area_id }})
+                </small>
+              </li>
+            </ul>
+            <div v-else-if="!editor.roomAssignments.loading" class="muted">No rooms assigned</div>
+            <div class="room-assignment-add">
+              <select v-model="editor.roomAssignments.selectedRoomId" :disabled="editor.roomAssignments.loading || editor.roomAssignments.adding">
+                <option value="">Select a room</option>
+                <option v-for="room in editor.roomAssignments.rooms.filter(room => !isRoomAssigned(room.id))"
+                        :key="room.id" :value="String(room.id)">
+                  {{ room.id }} (area {{ room.known_area_id }})
+                </option>
+              </select>
+              <button class="primary" @click="addRoomAssignment"
+                      :disabled="!editor.roomAssignments.selectedRoomId || editor.roomAssignments.loading || editor.roomAssignments.adding">
+                {{ editor.roomAssignments.adding ? 'Adding...' : 'Add' }}
+              </button>
+            </div>
+          </section>
+
           <div class="modal-actions">
             <button @click="closeEditor">Cancel</button>
             <button class="primary" @click="saveRow" :disabled="editor.saving">{{ editor.saving ? 'Saving...' : 'Save' }}</button>

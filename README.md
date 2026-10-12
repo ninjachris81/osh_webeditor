@@ -47,6 +47,7 @@ deletes its subtype rows (they hold foreign keys to the base row).
   editable via its combobox even in edit mode — changing it re-keys the row, and the
   key change cascades to the actor subtype tables (`ON UPDATE CASCADE`) in one transaction
 - Create / edit / delete rows (edit/delete require a primary key on the table)
+- Edit `dm_actors` and `dm_values` with their assigned rooms, and assign them to additional known rooms
 - Type-aware editor: boolean dropdowns, numeric inputs, NULL checkboxes,
   database default values honoured on insert
 - Vue.js is vendored locally (no CDN) — works offline on the Pi

@@ -1101,6 +1101,37 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
     }
   }));
 
+  router.delete('/tables/:table/room-assignments', asyncHandler(async (req, res) => {
+    const tableName = req.params.table;
+    const assignment = ROOM_ASSIGNMENTS[tableName];
+    if (!assignment) throw httpError(400, 'Room assignments are only available for dm_actors and dm_values.');
+
+    const meta = await getTableMeta(tableName);
+    const keyColumns = ['id', 'value_group_id'].map((name) => meta.columns.find((column) => column.name === name));
+    if (keyColumns.some((column) => !column)) {
+      throw httpError(500, `The ${tableName} table is missing required key columns.`);
+    }
+    const { id: rawId, value_group_id: rawValueGroupId, room_id: rawRoomId } = req.body || {};
+    const id = coerceValue(keyColumns[0], rawId);
+    const valueGroupId = coerceValue(keyColumns[1], rawValueGroupId);
+    const roomColumn = (await schemaCache.columns('dm_known_rooms')).find((column) => column.name === 'id');
+    if (!roomColumn) throw httpError(500, 'The dm_known_rooms table is missing its id column.');
+    const roomId = coerceValue(roomColumn, rawRoomId);
+    if (id === null || valueGroupId === null || roomId === null) {
+      throw httpError(400, 'id, value_group_id, and room_id are required.');
+    }
+
+    const result = await pool.query(
+      `DELETE FROM ${quoteIdent(assignment.table)}
+        WHERE ${quoteIdent('room_id')} = $1
+          AND ${quoteIdent(assignment.itemColumn)} = $2
+          AND ${quoteIdent('value_group_id')} = $3`,
+      [roomId, id, valueGroupId]
+    );
+    if (result.rowCount === 0) throw httpError(404, 'Room assignment not found.');
+    res.json({ removed: result.rowCount });
+  }));
+
   router.post('/tables/:table/rows', asyncHandler(async (req, res) => {
     const meta = await getTableMeta(req.params.table);
     const { table, columns } = meta;

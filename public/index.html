@@ -365,10 +365,16 @@
             <div v-if="editor.roomAssignments.loading" class="muted">Loading rooms&hellip;</div>
             <ul v-else-if="editor.roomAssignments.assignedRoomIds.length" class="assigned-room-list">
               <li v-for="roomId in editor.roomAssignments.assignedRoomIds" :key="roomId">
-                {{ roomId }}
-                <small v-if="editor.roomAssignments.rooms.find(room => String(room.id) === roomId)">
-                  (area {{ editor.roomAssignments.rooms.find(room => String(room.id) === roomId).known_area_id }})
-                </small>
+                <span>
+                  {{ roomId }}
+                  <small v-if="editor.roomAssignments.rooms.find(room => String(room.id) === roomId)">
+                    (area {{ editor.roomAssignments.rooms.find(room => String(room.id) === roomId).known_area_id }})
+                  </small>
+                </span>
+                <button class="small danger" @click="removeRoomAssignment(roomId)"
+                        :disabled="editor.roomAssignments.removingRoomIds.includes(roomId)">
+                  {{ editor.roomAssignments.removingRoomIds.includes(roomId) ? 'Removing...' : 'Remove' }}
+                </button>
               </li>
             </ul>
             <div v-else-if="!editor.roomAssignments.loading" class="muted">No rooms assigned</div>

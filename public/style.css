@@ -482,6 +482,14 @@ select:focus {
   padding-left: 20px;
 }
 
+.assigned-room-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 3px 0;
+}
+
 .assigned-room-list small {
   color: var(--muted);
 }

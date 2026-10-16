@@ -110,7 +110,16 @@ createApp({
         pk: {},
         saving: false,
         error: null,
-        roomAssignments: { enabled: false, loading: false, rooms: [], assignedRoomIds: [], selectedRoomId: '', adding: false, error: null },
+        roomAssignments: {
+          enabled: false,
+          loading: false,
+          rooms: [],
+          assignedRoomIds: [],
+          selectedRoomId: '',
+          adding: false,
+          removingRoomIds: [],
+          error: null,
+        },
       },
     };
   },
@@ -478,6 +487,7 @@ createApp({
           assignedRoomIds: [],
           selectedRoomId: '',
           adding: false,
+          removingRoomIds: [],
           error: null,
         },
       };
@@ -529,6 +539,29 @@ createApp({
         roomAssignments.error = `Failed to assign room: ${err.message}`;
       } finally {
         roomAssignments.adding = false;
+      }
+    },
+
+    async removeRoomAssignment(roomId) {
+      const roomAssignments = this.editor.roomAssignments;
+      const key = String(roomId);
+      if (roomAssignments.removingRoomIds.includes(key)) return;
+      roomAssignments.removingRoomIds.push(key);
+      roomAssignments.error = null;
+      try {
+        await api(`/api/tables/${encodeURIComponent(this.currentTable)}/room-assignments`, {
+          method: 'DELETE',
+          body: {
+            id: this.editor.pk.id,
+            value_group_id: this.editor.pk.value_group_id,
+            room_id: roomId,
+          },
+        });
+        await this.loadRoomAssignments();
+      } catch (err) {
+        roomAssignments.error = `Failed to remove room assignment: ${err.message}`;
+      } finally {
+        roomAssignments.removingRoomIds = roomAssignments.removingRoomIds.filter((id) => id !== key);
       }
     },
 

@@ -48,6 +48,7 @@ deletes its subtype rows (they hold foreign keys to the base row).
   key change cascades to the actor subtype tables (`ON UPDATE CASCADE`) in one transaction
 - Create / edit / delete rows (edit/delete require a primary key on the table)
 - Edit `dm_actors` and `dm_values` with their assigned rooms, and assign them to additional known rooms
+- Every successful database edit increments `dm_version.version` in the same transaction
 - Type-aware editor: boolean dropdowns, numeric inputs, NULL checkboxes,
   database default values honoured on insert
 - Vue.js is vendored locally (no CDN) — works offline on the Pi
@@ -149,7 +150,8 @@ Environment overrides for the installer:
 > network install. Only the apt packages still require network access.
 
 > **Note:** the database user in `config.json` needs `SELECT` on all tables plus
-> `INSERT`/`UPDATE`/`DELETE` if you want to edit rows.
+> `INSERT`/`UPDATE`/`DELETE` if you want to edit rows, including `UPDATE` access to
+> `dm_version.version`. The `dm_version` table must contain a version row.
 
 ## HTTP API
 

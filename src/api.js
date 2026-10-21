@@ -124,6 +124,36 @@ function coerceValue(column, value) {
 function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {} }) {
   const router = express.Router();
 
+  async function incrementDbVersion(client) {
+    const result = await client.query(
+      `UPDATE ${quoteIdent('dm_version')}
+          SET ${quoteIdent('version')} = ${quoteIdent('version')} + 1`
+    );
+    if (result.rowCount === 0) {
+      throw httpError(500, 'Cannot increment dm_version: no version row exists.');
+    }
+  }
+
+  async function withVersionedTransaction(work) {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const { value, changed } = await work(client);
+      if (changed) await incrementDbVersion(client);
+      await client.query('COMMIT');
+      return value;
+    } catch (err) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        console.error('Failed to roll back database edit:', rollbackError);
+      }
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
   function isQuickfilterColumn(name, type) {
     return QUICKFILTER_COLUMNS.has(name) || BOOL_TYPES.has(type);
   }
@@ -280,7 +310,7 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
           `UPDATE ${quoteIdent(join.table)} SET ${setClause} WHERE ${whereClause}`,
           subNames.map((n) => subVals[n]).concat(keyVals)
         );
-        if (updated.rowCount > 0) return;
+        if (updated.rowCount > 0) return true;
       }
       const names = keyNames.concat(subNames);
       const allVals = keyVals.concat(subNames.map((n) => subVals[n]));
@@ -290,6 +320,7 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
           `VALUES (${placeholders.join(', ')})`,
         allVals
       );
+      return true;
     } catch (err) {
       if (err.code === '23505') {
         throw httpError(409, `Row already exists in ${join.table}: ${err.detail || err.message}`);
@@ -1086,13 +1117,16 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
     }
 
     try {
-      const placeholders = values.map((_, index) => `$${index + 1}`);
-      const result = await pool.query(
-        `INSERT INTO ${quoteIdent(assignment.table)} (${columns.map(quoteIdent).join(', ')})
-         VALUES (${placeholders.join(', ')}) RETURNING *`,
-        values
-      );
-      res.status(201).json({ assignment: result.rows[0] });
+      const assignmentRow = await withVersionedTransaction(async (client) => {
+        const placeholders = values.map((_, index) => `$${index + 1}`);
+        const result = await client.query(
+          `INSERT INTO ${quoteIdent(assignment.table)} (${columns.map(quoteIdent).join(', ')})
+           VALUES (${placeholders.join(', ')}) RETURNING *`,
+          values
+        );
+        return { value: result.rows[0], changed: true };
+      });
+      res.status(201).json({ assignment: assignmentRow });
     } catch (err) {
       if (err.code === '23505') {
         throw httpError(409, 'This item is already assigned to that room.');
@@ -1121,15 +1155,18 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
       throw httpError(400, 'id, value_group_id, and room_id are required.');
     }
 
-    const result = await pool.query(
-      `DELETE FROM ${quoteIdent(assignment.table)}
-        WHERE ${quoteIdent('room_id')} = $1
-          AND ${quoteIdent(assignment.itemColumn)} = $2
-          AND ${quoteIdent('value_group_id')} = $3`,
-      [roomId, id, valueGroupId]
-    );
-    if (result.rowCount === 0) throw httpError(404, 'Room assignment not found.');
-    res.json({ removed: result.rowCount });
+    const removed = await withVersionedTransaction(async (client) => {
+      const result = await client.query(
+        `DELETE FROM ${quoteIdent(assignment.table)}
+          WHERE ${quoteIdent('room_id')} = $1
+            AND ${quoteIdent(assignment.itemColumn)} = $2
+            AND ${quoteIdent('value_group_id')} = $3`,
+        [roomId, id, valueGroupId]
+      );
+      if (result.rowCount === 0) throw httpError(404, 'Room assignment not found.');
+      return { value: result.rowCount, changed: true };
+    });
+    res.json({ removed });
   }));
 
   router.post('/tables/:table/rows', asyncHandler(async (req, res) => {
@@ -1154,19 +1191,20 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
     }
 
     if (Object.keys(subtypeValues).length === 0) {
-      const result = await pool.query(
-        `INSERT INTO ${quoteIdent(table)} (${cols.join(', ')})
-         VALUES (${placeholders.join(', ')}) RETURNING *`,
-        vals
-      );
-      res.status(201).json({ row: result.rows[0] });
+      const row = await withVersionedTransaction(async (client) => {
+        const result = await client.query(
+          `INSERT INTO ${quoteIdent(table)} (${cols.join(', ')})
+           VALUES (${placeholders.join(', ')}) RETURNING *`,
+          vals
+        );
+        return { value: result.rows[0], changed: true };
+      });
+      res.status(201).json({ row });
       return;
     }
 
     // Combined view: insert the base row and its subtype rows in one transaction.
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
+    const row = await withVersionedTransaction(async (client) => {
       const result = await client.query(
         `INSERT INTO ${quoteIdent(table)} (${cols.join(', ')})
          VALUES (${placeholders.join(', ')}) RETURNING *`,
@@ -1177,14 +1215,9 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
         const join = meta.joins.find((j) => j.table === joinTable);
         await writeSubtypeRow(client, meta, join, row, subVals, row.class_type, false);
       }
-      await client.query('COMMIT');
-      res.status(201).json({ row });
-    } catch (err) {
-      await client.query('ROLLBACK').catch(() => {});
-      throw err;
-    } finally {
-      client.release();
-    }
+      return { value: row, changed: true };
+    });
+    res.status(201).json({ row });
   }));
 
   router.put('/tables/:table/rows', asyncHandler(async (req, res) => {
@@ -1221,23 +1254,24 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
       }
       // Shift the $n placeholders of the PK clause behind the SET values.
       const pkClause = shiftPlaceholders(pkWhere.where, vals.length);
-      const result = await pool.query(
-        `UPDATE ${quoteIdent(table)} SET ${set.join(', ')} WHERE ${pkClause} RETURNING *`,
-        vals.concat(pkWhere.vals)
-      );
-      if (result.rowCount === 0) {
-        throw httpError(404, 'Row not found (it may have been deleted or the primary key changed).');
-      }
-      res.json({ row: result.rows[0] });
+      const row = await withVersionedTransaction(async (client) => {
+        const result = await client.query(
+          `UPDATE ${quoteIdent(table)} SET ${set.join(', ')} WHERE ${pkClause} RETURNING *`,
+          vals.concat(pkWhere.vals)
+        );
+        if (result.rowCount === 0) {
+          throw httpError(404, 'Row not found (it may have been deleted or the primary key changed).');
+        }
+        return { value: result.rows[0], changed: true };
+      });
+      res.json({ row });
       return;
     }
 
     // Combined view: update base row + subtype rows in one transaction.
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-
+    const row = await withVersionedTransaction(async (client) => {
       let row;
+      let changed = false;
       if (set.length > 0) {
         // Update the base row first. Subtype tables reference the base key with
         // ON UPDATE CASCADE, so a key change re-keys their rows automatically
@@ -1251,6 +1285,7 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
           throw httpError(404, 'Row not found (it may have been deleted or the primary key changed).');
         }
         row = result.rows[0];
+        changed = true;
       } else {
         const result = await client.query(
           `SELECT * FROM ${quoteIdent(table)} WHERE ${pkWhere.where}`,
@@ -1265,19 +1300,16 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
       // upserted against the (possibly re-keyed) composite key.
       for (const [joinTable, subVals] of Object.entries(subtypeValues)) {
         const join = meta.joins.find((j) => j.table === joinTable);
-        await writeSubtypeRow(client, meta, join, newKey, subVals, row.class_type, true);
+        changed = await writeSubtypeRow(client, meta, join, newKey, subVals, row.class_type, true) || changed;
       }
-      await client.query('COMMIT');
-      res.json({ row });
-    } catch (err) {
-      await client.query('ROLLBACK').catch(() => {});
+      return { value: row, changed };
+    }).catch((err) => {
       if (err.code === '23505') {
         throw httpError(409, `A row with this key already exists: ${err.detail || err.message}`);
       }
       throw err;
-    } finally {
-      client.release();
-    }
+    });
+    res.json({ row });
   }));
 
   router.delete('/tables/:table/rows', asyncHandler(async (req, res) => {
@@ -1287,22 +1319,23 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
     const pkWhere = buildPkWhere(primaryKey, columns, pk);
 
     if (meta.joins.length === 0) {
-      const result = await pool.query(
-        `DELETE FROM ${quoteIdent(table)} WHERE ${pkWhere.where}`,
-        pkWhere.vals
-      );
-      if (result.rowCount === 0) {
-        throw httpError(404, 'Row not found.');
-      }
-      res.json({ deleted: result.rowCount });
+      const deleted = await withVersionedTransaction(async (client) => {
+        const result = await client.query(
+          `DELETE FROM ${quoteIdent(table)} WHERE ${pkWhere.where}`,
+          pkWhere.vals
+        );
+        if (result.rowCount === 0) {
+          throw httpError(404, 'Row not found.');
+        }
+        return { value: result.rowCount, changed: true };
+      });
+      res.json({ deleted });
       return;
     }
 
     // Combined view: subtype rows hold FK references to the base row,
     // so delete them first in one transaction.
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
+    const deleted = await withVersionedTransaction(async (client) => {
       let deleted = 0;
       for (const join of meta.joins) {
         const where = join.joinKeys.map((k, i) => `${quoteIdent(k)} = $${i + 1}`).join(' AND ');
@@ -1324,14 +1357,9 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
         throw httpError(404, 'Row not found.');
       }
       deleted += result.rowCount;
-      await client.query('COMMIT');
-      res.json({ deleted });
-    } catch (err) {
-      await client.query('ROLLBACK').catch(() => {});
-      throw err;
-    } finally {
-      client.release();
-    }
+      return { value: deleted, changed: true };
+    });
+    res.json({ deleted });
   }));
 
   router.post('/schema/refresh', asyncHandler(async (req, res) => {

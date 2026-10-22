@@ -417,7 +417,7 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
     ]);
     const roomHasFullName = roomColumns.some((column) => column.name === 'full_name');
     const [areasResult, roomsResult, actorsResult, valuesResult] = await Promise.all([
-      pool.query(`SELECT id FROM ${quoteIdent('dm_known_areas')} ORDER BY display_order NULLS LAST, id`),
+      pool.query(`SELECT id, name FROM ${quoteIdent('dm_known_areas')} ORDER BY display_order DESC NULLS LAST, id`),
       pool.query(
         `SELECT id, known_area_id${roomHasFullName ? ', full_name' : ''} FROM ${quoteIdent('dm_known_rooms')} ORDER BY id`
       ),
@@ -448,7 +448,7 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
       makeObjectKey(row.value_group_id, row.id), row,
     ]));
 
-    const areas = areasResult.rows.map((area) => ({ id: area.id, rooms: [] }));
+    const areas = areasResult.rows.map((area) => ({ id: area.id, name: area.name, rooms: [] }));
     const areaById = new Map(areas.map((area) => [String(area.id), area]));
     const roomById = new Map();
     for (const row of roomsResult.rows) {

@@ -667,6 +667,19 @@ button.mindmap-node:hover {
   font-weight: 650;
 }
 
+.area-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.area-name {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: italic;
+  font-weight: 400;
+}
+
 .value-group-label {
   display: flex;
   flex-direction: column;

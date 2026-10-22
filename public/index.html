@@ -60,7 +60,10 @@
             <section v-for="area in systemOverview.areas" :key="area.id" class="mindmap-area">
               <button class="mindmap-node area-node" @click="toggleSystemArea(area.id)" :aria-expanded="!!systemOverview.expandedAreas[area.id]">
                 <span class="fold-mark">{{ systemOverview.expandedAreas[area.id] ? '−' : '+' }}</span>
-                <span>{{ area.id }}</span>
+                <span class="area-label">
+                  <span>{{ area.id }}</span>
+                  <small class="area-name">{{ area.name && String(area.name).trim() ? area.name : '-' }}</small>
+                </span>
               </button>
               <div v-if="systemOverview.expandedAreas[area.id] && area.rooms.length" class="mindmap-children room-branches">
                 <section v-for="room in area.rooms" :key="room.id" class="mindmap-room">

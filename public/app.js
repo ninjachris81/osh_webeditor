@@ -321,7 +321,7 @@ createApp({
         const data = await api('/api/object-overview');
         this.objectOverview.groups = data.groups;
         this.objectOverview.expandedGroups = Object.fromEntries(
-          data.groups.map((group) => [String(group.id), true])
+          data.groups.map((group) => [String(group.id), false])
         );
         const source = markRaw(new EventSource('/api/system-overview/values-events'));
         this.systemOverviewValueSource = source;

@@ -66,7 +66,10 @@
                 <section v-for="room in area.rooms" :key="room.id" class="mindmap-room">
                   <button class="mindmap-node room-node" @click="toggleSystemRoom(area.id, room.id)" :aria-expanded="!!systemOverview.expandedRooms[area.id + ':' + room.id]">
                     <span class="fold-mark">{{ systemOverview.expandedRooms[area.id + ':' + room.id] ? '−' : '+' }}</span>
-                    <span>{{ room.id }}</span>
+                    <span class="room-label">
+                      <span>{{ room.id }}</span>
+                      <small class="room-full-name">{{ room.full_name && String(room.full_name).trim() ? room.full_name : '-' }}</small>
+                    </span>
                   </button>
                   <div v-if="systemOverview.expandedRooms[area.id + ':' + room.id]" class="mindmap-children object-groups">
                     <section v-if="room.actors.length" class="object-group">
@@ -132,7 +135,10 @@
             <section v-for="group in objectOverview.groups" :key="group.id" class="mindmap-area">
               <button class="mindmap-node value-group-node" @click="toggleObjectGroup(group.id)" :aria-expanded="!!objectOverview.expandedGroups[group.id]">
                 <span class="fold-mark">{{ objectOverview.expandedGroups[group.id] ? '−' : '+' }}</span>
-                <span>dm_value_groups: {{ group.id }}</span>
+                <span class="value-group-label">
+                  <span>dm_value_groups: {{ group.id }}</span>
+                  <small class="value-group-comment">{{ group.comment && String(group.comment).trim() ? group.comment : '-' }}</small>
+                </span>
               </button>
               <div v-if="objectOverview.expandedGroups[group.id]" class="mindmap-children object-groups">
                 <section v-if="group.actors.length" class="object-group">

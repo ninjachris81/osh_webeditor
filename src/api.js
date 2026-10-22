@@ -360,12 +360,16 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
     const missingTable = requiredTables.find((table) => !tableNames.has(table));
     if (missingTable) throw httpError(404, `Required table not found: ${missingTable}`);
 
-    const [actorMeta, valueMeta] = await Promise.all([
+    const [groupColumns, actorMeta, valueMeta] = await Promise.all([
+      schemaCache.columns('dm_value_groups'),
       getTableMeta('dm_actors'),
       getTableMeta('dm_values'),
     ]);
+    const groupHasComment = groupColumns.some((column) => column.name === 'comment');
     const [groupsResult, actorsResult, valuesResult] = await Promise.all([
-      pool.query(`SELECT id FROM ${quoteIdent('dm_value_groups')} ORDER BY id`),
+      pool.query(
+        `SELECT id${groupHasComment ? ', comment' : ''} FROM ${quoteIdent('dm_value_groups')} ORDER BY id`
+      ),
       pool.query(
         `SELECT ${['base.*'].concat(actorMeta.joinedColumns.map((column) => column.selectExpr)).join(', ')}
            FROM ${buildFromClause(actorMeta)}
@@ -380,6 +384,7 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
 
     const groups = groupsResult.rows.map((row) => ({
       id: row.id,
+      comment: groupHasComment ? row.comment : null,
       actors: [],
       values: [],
     }));
@@ -405,13 +410,19 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
     const missingTable = requiredTables.find((table) => !tableNames.has(table));
     if (missingTable) throw httpError(404, `Required table not found: ${missingTable}`);
 
-    const [areasResult, roomsResult, actorsResult, valuesResult, actorColumns, valueColumns] = await Promise.all([
-      pool.query(`SELECT id FROM ${quoteIdent('dm_known_areas')} ORDER BY display_order NULLS LAST, id`),
-      pool.query(`SELECT id, known_area_id FROM ${quoteIdent('dm_known_rooms')} ORDER BY id`),
-      pool.query(`SELECT room_id, actor_id, value_group_id FROM ${quoteIdent('dm_known_rooms_actors')} ORDER BY order_index NULLS LAST, actor_id`),
-      pool.query(`SELECT room_id, value_id, value_group_id FROM ${quoteIdent('dm_known_rooms_values')} ORDER BY order_index NULLS LAST, value_id`),
+    const [roomColumns, actorColumns, valueColumns] = await Promise.all([
+      schemaCache.columns('dm_known_rooms'),
       schemaCache.columns('dm_actors'),
       schemaCache.columns('dm_values'),
+    ]);
+    const roomHasFullName = roomColumns.some((column) => column.name === 'full_name');
+    const [areasResult, roomsResult, actorsResult, valuesResult] = await Promise.all([
+      pool.query(`SELECT id FROM ${quoteIdent('dm_known_areas')} ORDER BY display_order NULLS LAST, id`),
+      pool.query(
+        `SELECT id, known_area_id${roomHasFullName ? ', full_name' : ''} FROM ${quoteIdent('dm_known_rooms')} ORDER BY id`
+      ),
+      pool.query(`SELECT room_id, actor_id, value_group_id FROM ${quoteIdent('dm_known_rooms_actors')} ORDER BY order_index NULLS LAST, actor_id`),
+      pool.query(`SELECT room_id, value_id, value_group_id FROM ${quoteIdent('dm_known_rooms_values')} ORDER BY order_index NULLS LAST, value_id`),
     ]);
     const actorHasComment = actorColumns.some((column) => column.name === 'comment');
     const valueHasComment = valueColumns.some((column) => column.name === 'comment');
@@ -443,7 +454,7 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
     for (const row of roomsResult.rows) {
       const area = areaById.get(String(row.known_area_id));
       if (!area) continue;
-      const room = { id: row.id, actors: [], values: [] };
+      const room = { id: row.id, full_name: roomHasFullName ? row.full_name : null, actors: [], values: [] };
       area.rooms.push(room);
       roomById.set(String(row.id), room);
     }

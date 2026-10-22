@@ -354,6 +354,46 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
     res.json({ ok: true });
   }));
 
+  router.get('/object-overview', asyncHandler(async (req, res) => {
+    const tableNames = new Set((await schemaCache.tables()).map((table) => table.name));
+    const requiredTables = ['dm_value_groups', 'dm_actors', 'dm_values'];
+    const missingTable = requiredTables.find((table) => !tableNames.has(table));
+    if (missingTable) throw httpError(404, `Required table not found: ${missingTable}`);
+
+    const [actorMeta, valueMeta] = await Promise.all([
+      getTableMeta('dm_actors'),
+      getTableMeta('dm_values'),
+    ]);
+    const [groupsResult, actorsResult, valuesResult] = await Promise.all([
+      pool.query(`SELECT id FROM ${quoteIdent('dm_value_groups')} ORDER BY id`),
+      pool.query(
+        `SELECT ${['base.*'].concat(actorMeta.joinedColumns.map((column) => column.selectExpr)).join(', ')}
+           FROM ${buildFromClause(actorMeta)}
+          ORDER BY base.${quoteIdent('value_group_id')}, base.${quoteIdent('id')}`
+      ),
+      pool.query(
+        `SELECT ${['base.*'].concat(valueMeta.joinedColumns.map((column) => column.selectExpr)).join(', ')}
+           FROM ${buildFromClause(valueMeta)}
+          ORDER BY base.${quoteIdent('value_group_id')}, base.${quoteIdent('id')}`
+      ),
+    ]);
+
+    const groups = groupsResult.rows.map((row) => ({
+      id: row.id,
+      actors: [],
+      values: [],
+    }));
+    const groupsById = new Map(groups.map((group) => [String(group.id), group]));
+    for (const actor of actorsResult.rows) {
+      groupsById.get(String(actor.value_group_id))?.actors.push(actor);
+    }
+    for (const value of valuesResult.rows) {
+      groupsById.get(String(value.value_group_id))?.values.push(value);
+    }
+
+    res.json({ groups });
+  }));
+
   router.get('/system-overview', asyncHandler(async (req, res) => {
     const tableNames = new Set((await schemaCache.tables()).map((table) => table.name));
     const requiredTables = [

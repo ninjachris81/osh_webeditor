@@ -362,6 +362,18 @@ select:focus {
   color: var(--muted);
 }
 
+.overall-state {
+  white-space: nowrap;
+}
+
+.overall-state-healthy {
+  color: #7bd88f;
+}
+
+.overall-state-unhealthy {
+  color: var(--danger);
+}
+
 .actions-col {
   width: 1%;
 }
@@ -648,7 +660,8 @@ button.mindmap-node:hover {
   border-color: var(--accent);
 }
 
-.area-node {
+.area-node,
+.value-group-node {
   height: auto;
   border-left: 4px solid #4f8ef7;
   font-weight: 650;

@@ -87,6 +87,7 @@ createApp({
       currentTable: null,
       currentView: 'system-overview',
       systemOverview: { areas: [], loading: false, error: null, expandedAreas: {}, expandedRooms: {} },
+      objectOverview: { groups: [], loading: false, error: null, expandedGroups: {} },
       systemOverviewValueSource: null,
       schema: null,
       rows: [],
@@ -166,6 +167,16 @@ createApp({
     },
     onlineDeviceCount() {
       return this.statusOverview.devices.filter((device) => this.isDeviceOnline(device)).length;
+    },
+    mandatoryDevices() {
+      return this.statusOverview.devices.filter((device) => (
+        device.details.mandatory === true || device.details.is_mandatory === true
+      ));
+    },
+    overallStateHealthy() {
+      return this.mandatoryDevices.every((device) => (
+        this.isDeviceOnline(device) && device.health === true
+      ));
     },
   },
 
@@ -264,6 +275,14 @@ createApp({
               }
             }
           }
+          for (const group of this.objectOverview.groups) {
+            for (const item of group.actors.concat(group.values)) {
+              if (String(item.value_group_id) === String(update.value_group_id) && String(item.id) === String(update.id)) {
+                item.latestValue = update.value;
+                item.valueRevision = (item.valueRevision || 0) + 1;
+              }
+            }
+          }
         });
         source.addEventListener('error', (event) => {
           if (event.data) {
@@ -283,6 +302,58 @@ createApp({
     closeSystemOverviewValues() {
       if (this.systemOverviewValueSource) this.systemOverviewValueSource.close();
       this.systemOverviewValueSource = null;
+    },
+
+    async showObjectOverview() {
+      this.closeSystemOverviewValues();
+      this.closeStatusOverview();
+      this.closeWarningLog();
+      this.closeWatch();
+      this.currentView = 'object-overview';
+      this.currentTable = null;
+      this.objectOverview = {
+        groups: [],
+        loading: true,
+        error: null,
+        expandedGroups: {},
+      };
+      try {
+        const data = await api('/api/object-overview');
+        this.objectOverview.groups = data.groups;
+        this.objectOverview.expandedGroups = Object.fromEntries(
+          data.groups.map((group) => [String(group.id), true])
+        );
+        const source = markRaw(new EventSource('/api/system-overview/values-events'));
+        this.systemOverviewValueSource = source;
+        source.addEventListener('value', (event) => {
+          const update = JSON.parse(event.data);
+          for (const group of this.objectOverview.groups) {
+            for (const item of group.actors.concat(group.values)) {
+              if (String(item.value_group_id) === String(update.value_group_id) && String(item.id) === String(update.id)) {
+                item.latestValue = update.value;
+                item.valueRevision = (item.valueRevision || 0) + 1;
+              }
+            }
+          }
+        });
+        source.addEventListener('error', (event) => {
+          if (event.data) {
+            const error = JSON.parse(event.data);
+            this.objectOverview.error = `MQTT value stream failed: ${error.message}`;
+            source.close();
+            this.systemOverviewValueSource = null;
+          }
+        });
+      } catch (err) {
+        this.objectOverview.error = `Failed to load object hierarchy: ${err.message}`;
+      } finally {
+        this.objectOverview.loading = false;
+      }
+    },
+
+    toggleObjectGroup(groupId) {
+      const key = String(groupId);
+      this.objectOverview.expandedGroups[key] = !this.objectOverview.expandedGroups[key];
     },
 
     toggleSystemArea(areaId) {

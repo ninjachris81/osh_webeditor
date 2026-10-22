@@ -97,6 +97,8 @@ The **Status Overview** subscribes to `osh/dd/+/+` for device heartbeats.
 `general.onlineTimeoutSeconds` controls how long a device remains online without a
 message (default `60`). It displays all rows from `dm_known_devices`, along with each
 device's heartbeat health, sender, message timestamp, and human-readable service uptime.
+When mandatory devices are configured, an overall state is shown as healthy only when
+every mandatory device is online and healthy.
 
 The config file path can be overridden with the `OSH_WEBAPP_CONFIG` environment variable.
 

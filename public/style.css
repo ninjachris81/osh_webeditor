@@ -660,6 +660,14 @@ button.mindmap-node:hover {
   border-color: var(--accent);
 }
 
+button.mindmap-node.room-node-empty {
+  cursor: default;
+}
+
+button.mindmap-node.room-node-empty:hover {
+  border-color: var(--border);
+}
+
 .area-node,
 .value-group-node {
   height: auto;

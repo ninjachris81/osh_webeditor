@@ -67,8 +67,13 @@
               </button>
               <div v-if="systemOverview.expandedAreas[area.id] && area.rooms.length" class="mindmap-children room-branches">
                 <section v-for="room in area.rooms" :key="room.id" class="mindmap-room">
-                  <button class="mindmap-node room-node" @click="toggleSystemRoom(area.id, room.id)" :aria-expanded="!!systemOverview.expandedRooms[area.id + ':' + room.id]">
-                    <span class="fold-mark">{{ systemOverview.expandedRooms[area.id + ':' + room.id] ? '−' : '+' }}</span>
+                  <button
+                    class="mindmap-node room-node"
+                    :class="{ 'room-node-empty': room.actors.length === 0 && room.values.length === 0 }"
+                    @click="room.actors.length || room.values.length ? toggleSystemRoom(area.id, room.id) : null"
+                    :aria-expanded="room.actors.length || room.values.length ? !!systemOverview.expandedRooms[area.id + ':' + room.id] : null"
+                  >
+                    <span v-if="room.actors.length || room.values.length" class="fold-mark">{{ systemOverview.expandedRooms[area.id + ':' + room.id] ? '−' : '+' }}</span>
                     <span class="room-label">
                       <span>{{ room.id }}</span>
                       <small class="room-full-name">{{ room.full_name && String(room.full_name).trim() ? room.full_name : '-' }}</small>
@@ -126,16 +131,26 @@
       <section v-else-if="currentView === 'object-overview'" class="system-overview">
         <header class="toolbar">
           <h1>Object Overview</h1>
-          <span class="muted" v-if="!objectOverview.loading">{{ objectOverview.groups.length }} value groups</span>
+          <span class="muted" v-if="!objectOverview.loading">
+            {{ filteredObjectGroups.length }}{{ objectOverview.searchTerm.trim() ? ' / ' + objectOverview.groups.length : '' }} value groups
+          </span>
           <span class="spacer"></span>
+          <input
+            class="search"
+            type="search"
+            v-model="objectOverview.searchTerm"
+            placeholder="Filter by group ID or comment..."
+            aria-label="Filter value groups by ID or comment"
+          />
           <button @click="showObjectOverview">Refresh</button>
         </header>
         <div v-if="objectOverview.error" class="error-banner">{{ objectOverview.error }}</div>
         <div v-if="objectOverview.loading" class="muted center">Loading object hierarchy&hellip;</div>
         <div v-else-if="objectOverview.groups.length === 0" class="muted center">No value groups</div>
+        <div v-else-if="filteredObjectGroups.length === 0" class="muted center">No value groups match this filter</div>
         <div v-else class="mindmap-scroll">
           <div class="mindmap-root">
-            <section v-for="group in objectOverview.groups" :key="group.id" class="mindmap-area">
+            <section v-for="group in filteredObjectGroups" :key="group.id" class="mindmap-area">
               <button class="mindmap-node value-group-node" @click="toggleObjectGroup(group.id)" :aria-expanded="!!objectOverview.expandedGroups[group.id]">
                 <span class="fold-mark">{{ objectOverview.expandedGroups[group.id] ? '−' : '+' }}</span>
                 <span class="value-group-label">
@@ -192,9 +207,9 @@
       <section v-else-if="currentView === 'overview'" class="status-overview">
         <header class="toolbar">
           <h1>Status Overview</h1>
-          <span class="muted">{{ onlineDeviceCount }} / {{ statusOverview.devices.length }} online</span>
+          <span class="muted">{{ onlineDeviceCount }} / {{ filteredStatusDevices.length }} online</span>
           <span
-            v-if="!statusOverview.loading && mandatoryDevices.length"
+            v-if="!statusOverview.loading && !statusOverview.searchTerm.trim() && mandatoryDevices.length"
             class="overall-state"
           >
             Overall state:
@@ -203,6 +218,13 @@
             </strong>
           </span>
           <span class="spacer"></span>
+          <input
+            class="search"
+            type="search"
+            v-model="statusOverview.searchTerm"
+            placeholder="Filter by ID, service ID, or name..."
+            aria-label="Filter devices by ID, service ID, or name"
+          />
           <span class="watch-status" :class="'status-' + statusOverview.connection">{{ statusOverview.connectionText }}</span>
           <button @click="showStatusOverview">Refresh</button>
         </header>
@@ -226,10 +248,11 @@
               <tr v-if="statusOverview.loading">
                 <td :colspan="statusDeviceColumns.length + 8" class="muted center">Loading devices&hellip;</td>
               </tr>
-              <tr v-else-if="statusOverview.devices.length === 0">
-                <td :colspan="statusDeviceColumns.length + 8" class="muted center">No known devices</td>
+              <tr v-else-if="filteredStatusDevices.length === 0">
+                <td v-if="statusOverview.devices.length === 0" :colspan="statusDeviceColumns.length + 8" class="muted center">No known devices</td>
+                <td v-else :colspan="statusDeviceColumns.length + 8" class="muted center">No devices match this filter</td>
               </tr>
-              <tr v-for="device in statusOverview.devices" :key="device.id + ':' + device.serviceId">
+              <tr v-for="device in filteredStatusDevices" :key="device.id + ':' + device.serviceId">
                 <td v-for="column in statusDeviceColumns" :key="column">{{ device.details[column] === null ? 'NULL' : device.details[column] === undefined ? '—' : formatValue(device.details[column]) }}</td>
                 <td>
                   <template v-if="device.unknown">

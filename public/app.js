@@ -87,7 +87,7 @@ createApp({
       currentTable: null,
       currentView: 'system-overview',
       systemOverview: { areas: [], loading: false, error: null, expandedAreas: {}, expandedRooms: {} },
-      objectOverview: { groups: [], loading: false, error: null, expandedGroups: {} },
+      objectOverview: { groups: [], loading: false, error: null, expandedGroups: {}, searchTerm: '' },
       systemOverviewValueSource: null,
       schema: null,
       rows: [],
@@ -105,7 +105,7 @@ createApp({
       error: null,
       watch: { show: false, topic: '', status: 'connecting', statusText: 'Connecting', error: null, messages: [] },
       watchSource: null,
-      statusOverview: { devices: [], loading: false, connection: 'connecting', connectionText: 'Connecting', error: null, onlineTimeoutSeconds: 60 },
+      statusOverview: { devices: [], loading: false, connection: 'connecting', connectionText: 'Connecting', error: null, onlineTimeoutSeconds: 60, searchTerm: '' },
       statusSource: null,
       statusTimer: null,
       statusNow: Date.now(),
@@ -166,7 +166,15 @@ createApp({
         : ['id', 'service_id'];
     },
     onlineDeviceCount() {
-      return this.statusOverview.devices.filter((device) => this.isDeviceOnline(device)).length;
+      return this.filteredStatusDevices.filter((device) => this.isDeviceOnline(device)).length;
+    },
+    filteredStatusDevices() {
+      const query = this.statusOverview.searchTerm.trim().toLocaleLowerCase();
+      if (!query) return this.statusOverview.devices;
+      return this.statusOverview.devices.filter((device) => (
+        [device.id, device.serviceId, device.details.name]
+          .some((value) => String(value ?? '').toLocaleLowerCase().includes(query))
+      ));
     },
     mandatoryDevices() {
       return this.statusOverview.devices.filter((device) => (
@@ -176,6 +184,14 @@ createApp({
     overallStateHealthy() {
       return this.mandatoryDevices.every((device) => (
         this.isDeviceOnline(device) && device.health === true
+      ));
+    },
+    filteredObjectGroups() {
+      const query = this.objectOverview.searchTerm.trim().toLocaleLowerCase();
+      if (!query) return this.objectOverview.groups;
+      return this.objectOverview.groups.filter((group) => (
+        String(group.id).toLocaleLowerCase().includes(query) ||
+        String(group.comment ?? '').toLocaleLowerCase().includes(query)
       ));
     },
   },
@@ -316,6 +332,7 @@ createApp({
         loading: true,
         error: null,
         expandedGroups: {},
+        searchTerm: '',
       };
       try {
         const data = await api('/api/object-overview');
@@ -788,6 +805,7 @@ createApp({
         connectionText: 'Connecting',
         error: null,
         onlineTimeoutSeconds: 60,
+        searchTerm: '',
       };
       this.statusNow = Date.now();
       this.statusTimer = setInterval(() => {

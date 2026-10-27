@@ -172,7 +172,7 @@ createApp({
       const query = this.statusOverview.searchTerm.trim().toLocaleLowerCase();
       if (!query) return this.statusOverview.devices;
       return this.statusOverview.devices.filter((device) => (
-        [device.id, device.serviceId, device.details.name]
+        [device.id, device.serviceId, device.details.name, device.displayName, device.deviceName]
           .some((value) => String(value ?? '').toLocaleLowerCase().includes(query))
       ));
     },
@@ -856,6 +856,7 @@ createApp({
             lastMessageAt: data.receivedAt,
             health: Number(message.h) === 1,
             uptime: this.formatUptime(message.v),
+            deviceName: message.d,
             messageTimestamp,
             senderId: message.s,
             rawHeartbeat: message,
@@ -1005,6 +1006,27 @@ createApp({
       const value = Number(timestamp);
       if (!Number.isFinite(value) || value <= 0) return NaN;
       return value < 1e12 ? value * 1000 : value;
+    },
+
+    formatTimeAgo(timestamp) {
+      if (!Number.isFinite(timestamp)) return '—';
+      let remaining = Math.max(0, Math.floor((this.statusNow - timestamp) / 1000));
+      const units = [
+        ['day', 86400],
+        ['hour', 3600],
+        ['minute', 60],
+        ['second', 1],
+      ];
+      const parts = [];
+      for (const [unit, seconds] of units) {
+        const count = Math.floor(remaining / seconds);
+        if (count > 0) {
+          parts.push(`${count} ${unit}${count === 1 ? '' : 's'}`);
+          remaining %= seconds;
+        }
+        if (parts.length === 2) break;
+      }
+      return `${parts.length ? parts.join(' ') : '0 seconds'} ago`;
     },
 
     formatUptime(milliseconds) {

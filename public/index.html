@@ -235,6 +235,7 @@
               <tr>
                 <th v-for="column in statusDeviceColumns" :key="column">{{ column }}</th>
                 <th>Name</th>
+                <th>Device name</th>
                 <th>Online</th>
                 <th>Health</th>
                 <th>Uptime</th>
@@ -246,11 +247,11 @@
             </thead>
             <tbody>
               <tr v-if="statusOverview.loading">
-                <td :colspan="statusDeviceColumns.length + 8" class="muted center">Loading devices&hellip;</td>
+                <td :colspan="statusDeviceColumns.length + 9" class="muted center">Loading devices&hellip;</td>
               </tr>
               <tr v-else-if="filteredStatusDevices.length === 0">
-                <td v-if="statusOverview.devices.length === 0" :colspan="statusDeviceColumns.length + 8" class="muted center">No known devices</td>
-                <td v-else :colspan="statusDeviceColumns.length + 8" class="muted center">No devices match this filter</td>
+                <td v-if="statusOverview.devices.length === 0" :colspan="statusDeviceColumns.length + 9" class="muted center">No known devices</td>
+                <td v-else :colspan="statusDeviceColumns.length + 9" class="muted center">No devices match this filter</td>
               </tr>
               <tr v-for="device in filteredStatusDevices" :key="device.id + ':' + device.serviceId">
                 <td v-for="column in statusDeviceColumns" :key="column">{{ device.details[column] === null ? 'NULL' : device.details[column] === undefined ? '—' : formatValue(device.details[column]) }}</td>
@@ -261,6 +262,7 @@
                   </template>
                   <span v-else>{{ device.displayName }}</span>
                 </td>
+                <td>{{ device.deviceName || '—' }}</td>
                 <td>
                   <span class="device-presence" :class="isDeviceOnline(device) ? 'online' : 'offline'">
                     <span class="presence-dot"></span>{{ isDeviceOnline(device) ? 'Online' : 'Offline' }}
@@ -277,7 +279,7 @@
                 <td>{{ device.uptime === null ? '—' : device.uptime }}</td>
                 <td>{{ device.senderId || '—' }}</td>
                 <td>{{ device.messageTimestamp ? new Date(device.messageTimestamp).toLocaleString() : '—' }}</td>
-                <td>{{ device.lastMessageAt ? new Date(device.lastMessageAt).toLocaleString() : '—' }}</td>
+                <td>{{ device.lastMessageAt === null ? '—' : formatTimeAgo(device.lastMessageAt) }}</td>
                 <td class="actions">
                   <button v-if="!device.unknown" class="small" @click="openKnownDevice(device)">Open device</button>
                 </td>

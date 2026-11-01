@@ -1269,6 +1269,15 @@ createApp({
         const label = VALUE_TYPES[Number(value)];
         if (label) return `${label} (${value})`;
       }
+      if (tableName === 'dm_processor_tasks') {
+        const enumOptions = {
+          function_code: NATIVE_FUNCTION_TYPES,
+          task_trigger_type: PROCESSOR_TASK_TRIGGER_TYPES,
+          task_type: PROCESSOR_TASK_TYPES,
+        }[columnName];
+        const option = enumOptions?.find((item) => String(item.value) === String(value));
+        if (option) return `${option.label} (${value})`;
+      }
       return this.formatValue(value);
     },
 

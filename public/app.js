@@ -57,10 +57,48 @@ const VALUE_TYPES = {
   100: 'VALUE_TYPE_STATIC_TEMP',
 };
 
+const NATIVE_FUNCTION_TYPES = [
+  { value: 0, label: 'NFT_INVALID' },
+  { value: 100, label: 'NFT_INIT_SWITCH_LOGIC' },
+  { value: 101, label: 'NFT_INIT_SWITCH_LOGIC2' },
+  { value: 102, label: 'NFT_APPLY_SWITCH_TIMEOUT_LOGIC' },
+  { value: 105, label: 'NFT_INIT_SWITCH_PRESENCE_LOGIC' },
+  { value: 106, label: 'NFT_APPLY_SWITCH_PRESENCE_LOGIC' },
+  { value: 110, label: 'NFT_INIT_PRESENCE_LOGIC' },
+  { value: 111, label: 'NFT_APPLY_PRESENCE_LOGIC' },
+  { value: 120, label: 'NFT_APPLY_SHUTTER_LOGIC' },
+  { value: 1120, label: 'NFT_APPLY_SHUTTER_LOGIC_ADV' },
+  { value: 130, label: 'NFT_INIT_DOOR_RING_LOGIC' },
+  { value: 131, label: 'NFT_APPLY_DOOR_RING_TIMEOUT_LOGIC' },
+  { value: 140, label: 'NFT_INIT_PLAY_SOUND_ON_VALUE' },
+  { value: 141, label: 'NFT_INIT_PLAY_SOUND_ON_VALUE_2' },
+  { value: 142, label: 'NFT_INIT_PLAY_SOUND_ON_CMD' },
+  { value: 10, label: 'NFT_INIT_CONNECT_VALUES' },
+  { value: 11, label: 'NFT_INIT_TRIGGER_CMD_ON_VALUE' },
+  { value: 12, label: 'NFT_INIT_FOLLOW_ACTOR' },
+  { value: 13, label: 'NFT_START_TIMER' },
+  { value: 14, label: 'NFT_STOP_TIMER' },
+];
+
+const PROCESSOR_TASK_TRIGGER_TYPES = [
+  { value: 0, label: 'PTTT_INTERVAL' },
+  { value: 1, label: 'PTTT_ONLY_ONCE' },
+  { value: 2, label: 'PTTT_TRIGGER' },
+];
+
+const PROCESSOR_TASK_TYPES = [
+  { value: 0, label: 'PTT_JS' },
+  { value: 1, label: 'PTT_NATIVE' },
+];
+
 const NUMERIC_TYPES = [
   'smallint', 'integer', 'bigint', 'numeric', 'decimal',
   'real', 'double precision', 'serial', 'bigserial',
 ];
+
+const PROCESSOR_TASK_PARAMETER_COLUMNS = new Set(
+  Array.from({ length: 17 }, (_, index) => `param_${index}`)
+);
 
 async function api(path, options = {}) {
   const opts = {
@@ -91,6 +129,7 @@ createApp({
       systemOverviewValueSource: null,
       schema: null,
       rows: [],
+      processorVariableIds: [],
       total: 0,
       limit: 50,
       offset: 0,
@@ -153,6 +192,15 @@ createApp({
     valueTypeOptions() {
       return Object.entries(VALUE_TYPES).map(([value, label]) => ({ value, label }));
     },
+    nativeFunctionTypeOptions() {
+      return NATIVE_FUNCTION_TYPES;
+    },
+    processorTaskTriggerTypeOptions() {
+      return PROCESSOR_TASK_TRIGGER_TYPES;
+    },
+    processorTaskTypeOptions() {
+      return PROCESSOR_TASK_TYPES;
+    },
     actorCommandOptions() {
       return Object.entries(ACTOR_COMMANDS).map(([value, label]) => ({ value, label }));
     },
@@ -193,6 +241,14 @@ createApp({
         String(group.id).toLocaleLowerCase().includes(query) ||
         String(group.comment ?? '').toLocaleLowerCase().includes(query)
       ));
+    },
+    processorVariableMatcher() {
+      const ids = [...this.processorVariableIds]
+        .sort((a, b) => b.length - a.length)
+        .map((id) => id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+      return ids.length
+        ? new RegExp(`\\$(?:${ids.join('|')})(?![A-Za-z0-9_])`, 'g')
+        : null;
     },
   },
 
@@ -239,6 +295,7 @@ createApp({
       this.currentTable = name;
       this.schema = null;
       this.rows = [];
+      this.processorVariableIds = [];
       this.total = 0;
       this.offset = 0;
       this.search = '';
@@ -251,9 +308,45 @@ createApp({
         this.schema = await api(`/api/tables/${encodeURIComponent(name)}/schema`);
         this.orderBy = this.schema.primaryKey[0] || this.schema.columns[0].name;
         this.loadFilterOptions();
+        if (name === 'dm_processor_tasks') {
+          try {
+            await this.loadProcessorVariableIds();
+          } catch (err) {
+            this.error = `Failed to load processor variable IDs: ${err.message}`;
+          }
+        }
         await this.loadRows();
       } catch (err) {
-        this.error = `Failed to load schema for ${name}: ${err.message}`;
+        this.error = `Failed to load ${name}: ${err.message}`;
+      }
+    },
+
+    async loadProcessorVariableIds() {
+      const ids = [];
+      let offset = 0;
+      let total = 0;
+      do {
+        const params = new URLSearchParams({
+          limit: '500',
+          offset: String(offset),
+          order: 'id',
+        });
+        const data = await api(
+          `/api/tables/dm_processor_variables/rows?${params}`
+        );
+        ids.push(...data.rows
+          .map((row) => row.id)
+          .filter((id) => id !== null && id !== undefined && String(id) !== '')
+          .map(String));
+        total = data.total;
+        if (offset < total && data.rows.length === 0) {
+          throw new Error('No rows returned while loading processor variable IDs.');
+        }
+        offset += data.rows.length;
+      } while (offset < total);
+
+      if (this.currentTable === 'dm_processor_tasks') {
+        this.processorVariableIds = ids;
       }
     },
 
@@ -551,6 +644,24 @@ createApp({
 
     valueTypeMissing(field) {
       return field.value !== '' && !this.valueTypeOptions.some((option) => option.value === field.value);
+    },
+
+    nativeFunctionTypeMissing(field) {
+      return field.value !== '' && !this.nativeFunctionTypeOptions.some(
+        (option) => String(option.value) === String(field.value)
+      );
+    },
+
+    processorTaskTriggerTypeMissing(field) {
+      return field.value !== '' && !this.processorTaskTriggerTypeOptions.some(
+        (option) => String(option.value) === String(field.value)
+      );
+    },
+
+    processorTaskTypeMissing(field) {
+      return field.value !== '' && !this.processorTaskTypeOptions.some(
+        (option) => String(option.value) === String(field.value)
+      );
     },
 
     openCreate() {
@@ -1159,6 +1270,32 @@ createApp({
         if (label) return `${label} (${value})`;
       }
       return this.formatValue(value);
+    },
+
+    isProcessorTaskParameterColumn(columnName) {
+      return PROCESSOR_TASK_PARAMETER_COLUMNS.has(columnName);
+    },
+
+    processorVariableSegments(value) {
+      const text = this.formatValue(value);
+      if (!this.processorVariableMatcher) return [{ text, isVariable: false }];
+      const segments = [];
+      let cursor = 0;
+      for (const match of text.matchAll(this.processorVariableMatcher)) {
+        if (match.index > cursor) {
+          segments.push({ text: text.slice(cursor, match.index), isVariable: false });
+        }
+        segments.push({
+          text: match[0],
+          id: match[0].slice(1),
+          isVariable: true,
+        });
+        cursor = match.index + match[0].length;
+      }
+      if (cursor < text.length) {
+        segments.push({ text: text.slice(cursor), isVariable: false });
+      }
+      return segments.length ? segments : [{ text, isVariable: false }];
     },
 
     formatTitle(v) {

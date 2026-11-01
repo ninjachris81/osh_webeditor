@@ -379,6 +379,14 @@
               <tr v-else v-for="(row, idx) in rows" :key="idx">
                 <td v-for="col in schema.columns" :key="col.name" :title="formatTitle(row[col.name])">
                   <span v-if="row[col.name] === null" class="null">NULL</span>
+                  <span v-else-if="currentTable === 'dm_processor_tasks' && isProcessorTaskParameterColumn(col.name)">
+                    <template v-for="(segment, segmentIndex) in processorVariableSegments(row[col.name])" :key="segmentIndex">
+                      <a v-if="segment.isVariable" href="#" class="processor-variable-reference"
+                         :title="'Edit processor variable ' + segment.id"
+                         @click.prevent.stop="openMindmapItem({ id: segment.id }, 'dm_processor_variables')">{{ segment.text }}</a>
+                      <span v-else>{{ segment.text }}</span>
+                    </template>
+                  </span>
                   <span v-else-if="col.type === 'boolean'">
                     <span class="bool" :class="row[col.name] ? 'bool-true' : 'bool-false'">{{ row[col.name] ? 'true' : 'false' }}</span>
                   </span>
@@ -440,6 +448,30 @@
                   <option v-if="editor.mode === 'create' && field.value === ''" value="" disabled>(select)</option>
                   <option v-if="valueTypeMissing(field)" :value="field.value">{{ field.value }} (unknown value type)</option>
                   <option v-for="option in valueTypeOptions" :key="option.value" :value="option.value">{{ option.label }} ({{ option.value }})</option>
+                </select>
+                <select v-else-if="currentTable === 'dm_processor_tasks' && field.name === 'function_code'"
+                        v-model="field.value" :disabled="field.isNull || isPkLocked(field)">
+                  <option v-if="editor.mode === 'create' && field.value === ''" value="" disabled>(select)</option>
+                  <option v-if="nativeFunctionTypeMissing(field)" :value="field.value">{{ field.value }} (unknown function code)</option>
+                  <option v-for="option in nativeFunctionTypeOptions" :key="option.value" :value="String(option.value)">
+                    {{ option.label }} ({{ option.value }})
+                  </option>
+                </select>
+                <select v-else-if="currentTable === 'dm_processor_tasks' && field.name === 'task_trigger_type'"
+                        v-model="field.value" :disabled="field.isNull || isPkLocked(field)">
+                  <option v-if="editor.mode === 'create' && field.value === ''" value="" disabled>(select)</option>
+                  <option v-if="processorTaskTriggerTypeMissing(field)" :value="field.value">{{ field.value }} (unknown trigger type)</option>
+                  <option v-for="option in processorTaskTriggerTypeOptions" :key="option.value" :value="String(option.value)">
+                    {{ option.label }} ({{ option.value }})
+                  </option>
+                </select>
+                <select v-else-if="currentTable === 'dm_processor_tasks' && field.name === 'task_type'"
+                        v-model="field.value" :disabled="field.isNull || isPkLocked(field)">
+                  <option v-if="editor.mode === 'create' && field.value === ''" value="" disabled>(select)</option>
+                  <option v-if="processorTaskTypeMissing(field)" :value="field.value">{{ field.value }} (unknown task type)</option>
+                  <option v-for="option in processorTaskTypeOptions" :key="option.value" :value="String(option.value)">
+                    {{ option.label }} ({{ option.value }})
+                  </option>
                 </select>
                 <select v-else-if="field.lookup && lookupOptionsFor(field).length" v-model="field.value"
                         :disabled="field.isNull || isPkLocked(field)">

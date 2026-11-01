@@ -297,6 +297,17 @@ select:focus {
   font-weight: 600;
 }
 
+.processor-variable-reference {
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.processor-variable-reference:hover,
+.processor-variable-reference:focus {
+  color: var(--accent-dark);
+}
+
 .joined-src {
   font-size: 9px;
   background: var(--border);

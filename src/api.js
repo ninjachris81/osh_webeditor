@@ -338,12 +338,13 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
     }
   }
 
-  async function validateAudioReferences(client, actor, audioValues) {
+  async function validateAudioReferences(client, actor, audioValues, fieldsToValidate = Object.keys(AUDIO_REFERENCE_TYPES)) {
     if (actor.class_type !== 'AudioPlaybackActor') return;
 
     const audioColumns = await schemaCache.columns('dm_actors_audio');
     const valueColumns = await schemaCache.columns('dm_values');
-    for (const [field, reference] of Object.entries(AUDIO_REFERENCE_TYPES)) {
+    for (const field of fieldsToValidate) {
+      const reference = AUDIO_REFERENCE_TYPES[field];
       const audioColumn = audioColumns.find((column) => column.name === field);
       if (!audioColumn) throw httpError(500, `Required column missing from dm_actors_audio: ${field}`);
       const value = audioValues[field];
@@ -1463,7 +1464,21 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
             ...(audioRow.rows[0] || {}),
             ...(subtypeValues.dm_actors_audio || {}),
           };
-          await validateAudioReferences(client, actor, audioValues);
+          const changedReferences = Object.keys(AUDIO_REFERENCE_TYPES).filter((field) => {
+            const previous = audioRow.rows[0]?.[field];
+            const next = audioValues[field];
+            if ((previous === null || previous === undefined) &&
+                (next === null || next === undefined)) {
+              return false;
+            }
+            if (previous === null || previous === undefined || next === null || next === undefined) {
+              return true;
+            }
+            return String(previous) !== String(next);
+          });
+          if (changedReferences.length > 0) {
+            await validateAudioReferences(client, actor, audioValues, changedReferences);
+          }
         }
       }
       let row;

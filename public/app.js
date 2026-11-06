@@ -46,6 +46,7 @@ const VALUE_TYPES = {
   61: 'VALUE_TYPE_AUDIO_VOLUME',
   62: 'VALUE_TYPE_ALARM_SOUND',
   63: 'VALUE_TYPE_SOUND_URL',
+  64: 'VALUE_TYPE_SOUND_CURRENT_TITLE',
 
   70: 'VALUE_TYPE_DOOR',
 
@@ -150,6 +151,15 @@ createApp({
       statusNow: Date.now(),
       warningLog: { messages: [], connection: 'connecting', connectionText: 'Connecting', error: null },
       warningSource: null,
+      audioSetup: { actors: [], loading: false, creating: false, error: null, activeTab: 'playback-actors' },
+      audioValueCreation: {
+        fieldName: null,
+        id: '',
+        valueGroupId: '',
+        groupOptions: [],
+        saving: false,
+        error: null,
+      },
       editor: {
         show: false,
         mode: 'create',
@@ -902,6 +912,180 @@ createApp({
       }
     },
 
+    showAudioSetup() {
+      this.closeSystemOverviewValues();
+      this.closeStatusOverview();
+      this.closeWarningLog();
+      this.closeWatch();
+      this.currentView = 'audio-setup';
+      this.currentTable = null;
+      this.audioSetup = { actors: [], loading: false, creating: false, error: null, activeTab: 'playback-actors' };
+      this.loadAudioPlaybackActors();
+    },
+
+    async loadAudioPlaybackActors() {
+      this.audioSetup.loading = true;
+      this.audioSetup.error = null;
+      try {
+        const data = await api('/api/audio-setup/playback-actors');
+        this.audioSetup.actors = data.actors;
+      } catch (err) {
+        this.audioSetup.error = `Failed to load playback actors: ${err.message}`;
+      } finally {
+        this.audioSetup.loading = false;
+      }
+    },
+
+    async openAudioActorEdit(actor) {
+      try {
+        const schema = await api('/api/tables/dm_actors/schema');
+        this.schema = schema;
+        this.currentTable = 'dm_actors';
+        const fields = this.buildFields(actor);
+        await this.prepareAudioReferenceFields(fields, actor);
+        const pk = {};
+        for (const key of schema.primaryKey) pk[key] = actor[key];
+        this.editor = {
+          show: true,
+          mode: 'edit',
+          duplicate: false,
+          fields,
+          pk,
+          saving: false,
+          error: null,
+          returnToAudioSetup: true,
+          roomAssignments: { enabled: false },
+        };
+      } catch (err) {
+        this.audioSetup.error = `Failed to open playback actor: ${err.message}`;
+      }
+    },
+
+    async openAudioActorCreate() {
+      if (this.audioSetup.creating) return;
+      this.audioSetup.creating = true;
+      this.audioSetup.error = null;
+      try {
+        const schema = await api('/api/tables/dm_actors/schema');
+        this.schema = schema;
+        this.currentTable = 'dm_actors';
+        const fields = this.buildFields(null);
+        const initialValues = {
+          class_type: 'AudioPlaybackActor',
+          value_type: '60',
+          value_timeout: '0',
+        };
+        for (const field of fields) {
+          if (Object.prototype.hasOwnProperty.call(initialValues, field.name)) {
+            field.value = initialValues[field.name];
+          }
+          if (field.name === 'class_type') field.audioActorTypeLocked = true;
+        }
+        await this.prepareAudioReferenceFields(fields, null);
+        this.editor = {
+          show: true,
+          mode: 'create',
+          duplicate: false,
+          fields,
+          pk: {},
+          saving: false,
+          error: null,
+          returnToAudioSetup: true,
+          roomAssignments: { enabled: false },
+        };
+      } catch (err) {
+        this.audioSetup.error = `Failed to prepare playback actor: ${err.message}`;
+      } finally {
+        this.audioSetup.creating = false;
+      }
+    },
+
+    async prepareAudioReferenceFields(fields, actor) {
+      const referenceTypes = {
+        audio_volume_id: { classType: 'DoubleValue', valueType: 61 },
+        audio_url_id: { classType: 'StringValue', valueType: 63 },
+        audio_current_title_id: { classType: 'StringValue', valueType: 64 },
+      };
+      const optionsByType = {};
+      const [groupData] = await Promise.all([
+        api('/api/tables/dm_values/lookup/value_group_id'),
+        ...Object.entries(referenceTypes).map(async ([fieldName, reference]) => {
+          const params = new URLSearchParams({
+            class_type: reference.classType,
+            value_type: String(reference.valueType),
+          });
+          const data = await api(`/api/audio-setup/value-options?${params}`);
+          optionsByType[fieldName] = data.options;
+        }),
+      ]);
+      for (const field of fields) {
+        if (!Object.prototype.hasOwnProperty.call(referenceTypes, field.name)) continue;
+        const reference = referenceTypes[field.name];
+        field.audioValueType = reference.classType;
+        field.audioValueCode = reference.valueType;
+        field.options = optionsByType[field.name];
+        field.audioGroupOptions = groupData.options;
+        field.isNull = false;
+        if (!actor || actor[field.name] === null || actor[field.name] === undefined) field.value = '';
+      }
+    },
+
+    toggleAudioValueCreation(field) {
+      if (this.audioValueCreation.fieldName === field.name) {
+        this.audioValueCreation.fieldName = null;
+        return;
+      }
+      const groupField = this.editor.fields.find((item) => item.name === 'value_group_id');
+      const groupOptions = field.audioGroupOptions || [];
+      this.audioValueCreation = {
+        fieldName: field.name,
+        id: '',
+        valueGroupId: groupField && groupOptions.some((option) => String(option.value) === String(groupField.value))
+          ? String(groupField.value)
+          : '',
+        groupOptions,
+        saving: false,
+        error: null,
+      };
+    },
+
+    async createAudioReferenceValue(field) {
+      const creation = this.audioValueCreation;
+      if (creation.saving) return;
+      const id = creation.id.trim();
+      if (!id || !creation.valueGroupId) {
+        creation.error = 'ID and value_group_id are required.';
+        return;
+      }
+      creation.saving = true;
+      creation.error = null;
+      try {
+        const response = await api('/api/tables/dm_values/rows', {
+          method: 'POST',
+          body: {
+            values: {
+              id,
+              value_group_id: creation.valueGroupId,
+              class_type: field.audioValueType,
+              value_type: field.audioValueCode,
+              value_timeout: 0,
+              always_emit: null,
+              persist: true,
+            },
+          },
+        });
+        const created = response.row;
+        const compositeId = `${created.value_group_id}.${created.id}`;
+        field.options.push({ value: compositeId, label: compositeId });
+        field.value = compositeId;
+        creation.fieldName = null;
+      } catch (err) {
+        creation.error = `Failed to create value: ${err.message}`;
+      } finally {
+        creation.saving = false;
+      }
+    },
+
     showStatusOverview() {
       this.closeSystemOverviewValues();
       this.closeStatusOverview();
@@ -1227,7 +1411,9 @@ createApp({
           });
         }
         this.editor.show = false;
-        if (this.editor.returnToOverview) {
+        if (this.editor.returnToAudioSetup) {
+          await this.loadAudioPlaybackActors();
+        } else if (this.editor.returnToOverview) {
           this.showStatusOverview();
         } else {
           await this.loadRows();

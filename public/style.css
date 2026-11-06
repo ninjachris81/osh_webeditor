@@ -476,6 +476,43 @@ select:focus {
   flex: 1;
 }
 
+.audio-reference-controls {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  min-width: 0;
+}
+
+.audio-value-create-toggle {
+  align-self: flex-start;
+}
+
+.audio-value-create {
+  display: grid;
+  grid-template-columns: minmax(100px, 1fr) minmax(130px, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-alt);
+}
+
+.audio-value-create label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.audio-value-create .error-banner {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
 .null-toggle {
   color: var(--muted);
   font-size: 12px;
@@ -625,6 +662,33 @@ select:focus {
 
 .warning-log-grid {
   min-width: 620px;
+}
+
+.tab-bar {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+
+.tab-button {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+}
+
+.tab-button.active {
+  border-bottom-color: var(--accent);
+  color: var(--accent);
+}
+
+.audio-setup-grid {
+  min-width: 760px;
+}
+
+.audio-setup-message {
+  padding: 16px 0;
 }
 
 .mindmap-scroll {

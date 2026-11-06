@@ -19,6 +19,7 @@
         <li><a href="#" :class="{ active: currentView === 'overview' }" @click.prevent="showStatusOverview">Status Overview</a></li>
         <li><a href="#" :class="{ active: currentView === 'object-overview' }" @click.prevent="showObjectOverview">Object Overview</a></li>
         <li><a href="#" :class="{ active: currentView === 'warning-log' }" @click.prevent="showWarningLog">Warning Log</a></li>
+        <li><a href="#" :class="{ active: currentView === 'audio-setup' }" @click.prevent="showAudioSetup">Audio Setup</a></li>
       </ul>
 
       <div class="nav-section">Main tables</div>
@@ -290,6 +291,54 @@
         <div class="status-footnote muted">Online after a heartbeat; offline after {{ statusOverview.onlineTimeoutSeconds }} seconds without one.</div>
       </section>
 
+      <section v-else-if="currentView === 'audio-setup'" class="audio-setup-view">
+        <header class="toolbar">
+          <h1>Audio Setup</h1>
+          <span class="muted">{{ audioSetup.actors.length }} playback actor{{ audioSetup.actors.length === 1 ? '' : 's' }}</span>
+          <span class="spacer"></span>
+          <button class="primary" @click="openAudioActorCreate" :disabled="audioSetup.creating">+ Create Playback Actor</button>
+          <button @click="loadAudioPlaybackActors" :disabled="audioSetup.loading">Refresh</button>
+        </header>
+        <div class="tab-bar" role="tablist">
+          <button class="tab-button" :class="{ active: audioSetup.activeTab === 'playback-actors' }"
+                  role="tab" :aria-selected="audioSetup.activeTab === 'playback-actors'"
+                  @click="audioSetup.activeTab = 'playback-actors'">Playback Actors</button>
+        </div>
+        <div v-if="audioSetup.error" class="error-banner">{{ audioSetup.error }}</div>
+        <div v-if="audioSetup.loading" class="muted audio-setup-message">Loading playback actors&hellip;</div>
+        <div v-else class="grid-wrap">
+          <table class="grid audio-setup-grid">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Value group</th>
+                <th>Audio name</th>
+                <th>Volume value ID</th>
+                <th>Audio URL value ID</th>
+                <th>Current title value ID</th>
+                <th class="actions-col">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-if="audioSetup.actors.length === 0">
+                <td colspan="7" class="muted center">No named playback actors with audio setup found</td>
+              </tr>
+              <tr v-for="actor in audioSetup.actors" :key="actor.value_group_id + ':' + actor.id">
+                <td>{{ actor.id }}</td>
+                <td>{{ actor.value_group_id }}</td>
+                <td>{{ actor.audio_name }}</td>
+                <td>{{ actor.audio_volume_id ?? '—' }}</td>
+                <td>{{ actor.audio_url_id ?? '—' }}</td>
+                <td>{{ actor.audio_current_title_id ?? '—' }}</td>
+                <td class="actions">
+                  <button class="small" @click="openAudioActorEdit(actor)">Edit</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <section v-else-if="currentView === 'warning-log'" class="warning-log-view">
         <header class="toolbar">
           <h1>Warning Log</h1>
@@ -473,6 +522,40 @@
                     {{ option.label }} ({{ option.value }})
                   </option>
                 </select>
+                <template v-else-if="field.audioValueType">
+                  <div class="audio-reference-controls">
+                    <select v-model="field.value" :disabled="field.isNull || isPkLocked(field)">
+                      <option v-if="field.value === ''" value="" disabled>(select a {{ field.audioValueType }})</option>
+                      <option v-if="field.value !== '' && !field.options.some(option => String(option.value) === String(field.value))"
+                              :value="field.value">⚠ {{ field.value }} (not a {{ field.audioValueType }})</option>
+                      <option v-for="option in field.options" :key="option.value" :value="String(option.value)">
+                        {{ option.label }} ({{ option.value }})
+                      </option>
+                    </select>
+                    <button class="small audio-value-create-toggle" @click="toggleAudioValueCreation(field)">
+                      {{ audioValueCreation.fieldName === field.name ? 'Cancel new value' : '+ Create value' }}
+                    </button>
+                    <div v-if="audioValueCreation.fieldName === field.name" class="audio-value-create">
+                      <label>
+                        ID
+                        <input type="text" v-model="audioValueCreation.id" :disabled="audioValueCreation.saving" />
+                      </label>
+                      <label>
+                        Value group
+                        <select v-model="audioValueCreation.valueGroupId" :disabled="audioValueCreation.saving">
+                          <option value="">Select a value group</option>
+                          <option v-for="option in audioValueCreation.groupOptions" :key="option.value"
+                                  :value="String(option.value)">{{ option.label }}</option>
+                        </select>
+                      </label>
+                      <button class="small primary" @click="createAudioReferenceValue(field)"
+                              :disabled="audioValueCreation.saving || !audioValueCreation.id.trim() || !audioValueCreation.valueGroupId">
+                        {{ audioValueCreation.saving ? 'Creating...' : 'Create and select' }}
+                      </button>
+                      <div v-if="audioValueCreation.error" class="error-banner">{{ audioValueCreation.error }}</div>
+                    </div>
+                  </div>
+                </template>
                 <select v-else-if="field.lookup && lookupOptionsFor(field).length" v-model="field.value"
                         :disabled="field.isNull || isPkLocked(field)">
                   <option v-if="editor.mode === 'create' && field.value === ''" value="" disabled>(select)</option>
@@ -484,14 +567,14 @@
                        :placeholder="field.hasDefault ? 'default: ' + field.default : ''" />
                 <template v-else>
                   <input type="text" v-model="field.value"
-                         :disabled="field.isNull || isPkLocked(field)"
+                         :disabled="field.isNull || isPkLocked(field) || field.audioActorTypeLocked"
                          :placeholder="field.hasDefault ? 'default: ' + field.default : ''"
                          :list="field.name === 'class_type' ? 'class-type-options' : null" />
                   <datalist v-if="field.name === 'class_type'" id="class-type-options">
                     <option v-for="(opt, i) in (filterOptions.class_type || [])" :key="i" :value="opt"></option>
                   </datalist>
                 </template>
-                <label class="null-toggle" v-if="field.nullable && !field.isPrimaryKey">
+                <label class="null-toggle" v-if="field.nullable && !field.isPrimaryKey && !field.audioValueType">
                   <input type="checkbox" v-model="field.isNull" /> NULL
                 </label>
               </div>
@@ -534,7 +617,10 @@
 
           <div class="modal-actions">
             <button @click="closeEditor">Cancel</button>
-            <button class="primary" @click="saveRow" :disabled="editor.saving">{{ editor.saving ? 'Saving...' : 'Save' }}</button>
+            <button class="primary" @click="saveRow"
+                    :disabled="editor.saving || editor.fields.some(field => field.audioValueType && (field.isNull || field.value === ''))">
+              {{ editor.saving ? 'Saving...' : 'Save' }}
+            </button>
           </div>
         </div>
       </div>

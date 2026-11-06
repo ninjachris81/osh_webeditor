@@ -48,6 +48,11 @@ deletes its subtype rows (they hold foreign keys to the base row).
   key change cascades to the actor subtype tables (`ON UPDATE CASCADE`) in one transaction
 - Create / edit / delete rows (edit/delete require a primary key on the table)
 - Edit `dm_actors` and `dm_values` with their assigned rooms, and assign them to additional known rooms
+- Audio Setup lists playback actors with a non-empty `dm_actors_audio.audio_name`; its editor validates
+  volume, URL, and current-title references against `DoubleValue` / `StringValue` rows encoded as
+  `value_group_id.id`; it can create referenced `dm_values` rows using the corresponding audio
+  value types (61, 63, or 64), `value_timeout = 0`, `always_emit = NULL`, and `persist = true`,
+  as well as create new playback actors
 - Every successful database edit increments `dm_version.version` in the same transaction
 - Type-aware editor: boolean dropdowns, numeric inputs, NULL checkboxes,
   database default values honoured on insert
@@ -165,6 +170,8 @@ Environment overrides for the installer:
 | `GET`    | `/api/tables/:table/rows`         | Rows; query: `limit`, `offset`, `order`, `dir`, `q`, `f_<column>` (quickfilter, `__NULL__` for NULL) |
 | `GET`    | `/api/tables/:table/column-values/:column` | Distinct values of a quickfilter column |
 | `GET`    | `/api/tables/:table/lookup/:column` | Value/label options for a lookup column |
+| `GET`    | `/api/audio-setup/playback-actors` | Playback actors with matching audio subtype rows |
+| `GET`    | `/api/audio-setup/value-options` | Composite audio reference values by class type |
 | `POST`   | `/api/tables/:table/rows`         | Insert row — body: `{ "values": { col: val } }`    |
 | `PUT`    | `/api/tables/:table/rows`         | Update row — body: `{ "pk": {...}, "values": {...} }` |
 | `DELETE` | `/api/tables/:table/rows`         | Delete row — body: `{ "pk": {...} }`               |

@@ -50,6 +50,12 @@ const ROOM_ASSIGNMENTS = {
   dm_values: { table: 'dm_known_rooms_values', itemColumn: 'value_id' },
 };
 
+const AUDIO_REFERENCE_TYPES = {
+  audio_volume_id: { classType: 'DoubleValue', valueType: 61 },
+  audio_url_id: { classType: 'StringValue', valueType: 63 },
+  audio_current_title_id: { classType: 'StringValue', valueType: 64 },
+};
+
 // Sentinel used by the UI to filter for NULL values via quickfilters.
 const NULL_FILTER = '__NULL__';
 
@@ -332,6 +338,54 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
     }
   }
 
+  async function validateAudioReferences(client, actor, audioValues) {
+    if (actor.class_type !== 'AudioPlaybackActor') return;
+
+    const audioColumns = await schemaCache.columns('dm_actors_audio');
+    const valueColumns = await schemaCache.columns('dm_values');
+    for (const [field, reference] of Object.entries(AUDIO_REFERENCE_TYPES)) {
+      const audioColumn = audioColumns.find((column) => column.name === field);
+      if (!audioColumn) throw httpError(500, `Required column missing from dm_actors_audio: ${field}`);
+      const value = audioValues[field];
+      if (value === null || value === undefined || value === '') {
+        throw httpError(400, `${field} is required for AudioPlaybackActor.`);
+      }
+      const separator = String(value).indexOf('.');
+      if (separator <= 0 || separator === String(value).length - 1) {
+        throw httpError(400, `${field} must use the value_group_id.id format.`);
+      }
+      const valueGroupId = String(value).slice(0, separator);
+      const valueId = String(value).slice(separator + 1);
+      const groupColumn = valueColumns.find((column) => column.name === 'value_group_id');
+      const idColumn = valueColumns.find((column) => column.name === 'id');
+      const valueTypeColumn = valueColumns.find((column) => column.name === 'value_type');
+      if (!groupColumn || !idColumn || !valueTypeColumn ||
+          !valueColumns.some((column) => column.name === 'class_type')) {
+        throw httpError(500, 'dm_values must contain id, value_group_id, class_type, and value_type columns.');
+      }
+      const matchingValue = await client.query(
+        `SELECT 1 FROM ${quoteIdent('dm_values')}
+          WHERE ${quoteIdent('id')} = $1
+            AND ${quoteIdent('value_group_id')} = $2
+            AND ${quoteIdent('class_type')} = $3
+            AND ${quoteIdent('value_type')} = $4
+          LIMIT 1`,
+        [
+          coerceValue(idColumn, valueId),
+          coerceValue(groupColumn, valueGroupId),
+          reference.classType,
+          coerceValue(valueTypeColumn, reference.valueType),
+        ]
+      );
+      if (matchingValue.rowCount === 0) {
+        throw httpError(
+          400,
+          `${field} must reference a ${reference.classType} with value_type ${reference.valueType} using value_group_id.id.`
+        );
+      }
+    }
+  }
+
   function buildPkWhere(primaryKey, columns, pk) {
     if (primaryKey.length === 0) {
       throw httpError(400, 'This table has no primary key - row updates/deletes are not supported.');
@@ -397,6 +451,62 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
     }
 
     res.json({ groups });
+  }));
+
+  router.get('/audio-setup/playback-actors', asyncHandler(async (req, res) => {
+    const meta = await getTableMeta('dm_actors');
+    const audioJoin = meta.joins.find((join) => join.table === 'dm_actors_audio');
+    if (!audioJoin) throw httpError(404, 'Required table not found: dm_actors_audio');
+    if (!meta.columns.some((column) => column.name === 'class_type')) {
+      throw httpError(500, 'Required column missing from dm_actors: class_type');
+    }
+    const audioName = meta.joinedColumns.find(
+      (column) => column.source === 'dm_actors_audio' && column.sourceName === 'audio_name'
+    );
+    if (!audioName) throw httpError(500, 'Required column missing from dm_actors_audio: audio_name');
+
+    const selectList = ['base.*'].concat(meta.joinedColumns.map((column) => column.selectExpr)).join(', ');
+    const result = await pool.query(
+      `SELECT ${selectList}
+         FROM ${buildFromClause(meta)}
+        WHERE base.${quoteIdent('class_type')} = $1
+          AND ${audioJoin.alias}.${quoteIdent('id')} IS NOT NULL
+          AND NULLIF(BTRIM(${audioJoin.alias}.${quoteIdent('audio_name')}::text), '') IS NOT NULL
+        ORDER BY base.${quoteIdent('value_group_id')}, base.${quoteIdent('id')}`,
+      ['AudioPlaybackActor']
+    );
+    res.json({ actors: result.rows });
+  }));
+
+  router.get('/audio-setup/value-options', asyncHandler(async (req, res) => {
+    const classType = req.query.class_type;
+    const valueType = Number(req.query.value_type);
+    if (!Object.values(AUDIO_REFERENCE_TYPES).some((reference) => (
+      reference.classType === classType && reference.valueType === valueType
+    ))) {
+      throw httpError(400, 'Unsupported audio reference class_type and value_type.');
+    }
+
+    const columns = await schemaCache.columns('dm_values');
+    for (const required of ['id', 'value_group_id', 'class_type', 'value_type']) {
+      if (!columns.some((column) => column.name === required)) {
+        throw httpError(500, `Required column missing from dm_values: ${required}`);
+      }
+    }
+    const commentColumn = columns.find((column) => column.name === 'comment');
+    const compositeId = `${quoteIdent('value_group_id')}::text || '.' || ${quoteIdent('id')}::text`;
+    const label = commentColumn
+      ? `${compositeId} || CASE WHEN ${quoteIdent('comment')} IS NULL THEN '' ELSE ' — ' || ${quoteIdent('comment')}::text END`
+      : compositeId;
+    const result = await pool.query(
+      `SELECT ${compositeId} AS value, ${label} AS label
+         FROM ${quoteIdent('dm_values')}
+        WHERE ${quoteIdent('class_type')} = $1
+          AND ${quoteIdent('value_type')} = $2
+        ORDER BY ${quoteIdent('value_group_id')}, ${quoteIdent('id')}`,
+      [classType, valueType]
+    );
+    res.json({ options: result.rows });
   }));
 
   router.get('/system-overview', asyncHandler(async (req, res) => {
@@ -1248,6 +1358,9 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
            VALUES (${placeholders.join(', ')}) RETURNING *`,
           vals
         );
+        if (table === 'dm_actors') {
+          await validateAudioReferences(client, result.rows[0], {});
+        }
         return { value: result.rows[0], changed: true };
       });
       res.status(201).json({ row });
@@ -1262,6 +1375,9 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
         vals
       );
       const row = result.rows[0];
+      if (table === 'dm_actors') {
+        await validateAudioReferences(client, row, subtypeValues.dm_actors_audio || {});
+      }
       for (const [joinTable, subVals] of Object.entries(subtypeValues)) {
         const join = meta.joins.find((j) => j.table === joinTable);
         await writeSubtypeRow(client, meta, join, row, subVals, row.class_type, false);
@@ -1321,6 +1437,35 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
 
     // Combined view: update base row + subtype rows in one transaction.
     const row = await withVersionedTransaction(async (client) => {
+      if (table === 'dm_actors') {
+        const existing = await client.query(
+          `SELECT * FROM ${quoteIdent(table)} WHERE ${pkWhere.where}`,
+          pkWhere.vals
+        );
+        if (existing.rowCount === 0) {
+          throw httpError(404, 'Row not found (it may have been deleted or the primary key changed).');
+        }
+        const actor = { ...existing.rows[0] };
+        for (const column of columns) {
+          if (values && Object.prototype.hasOwnProperty.call(values, column.name)) {
+            actor[column.name] = coerceValue(column, values[column.name]);
+          }
+        }
+        if (actor.class_type === 'AudioPlaybackActor') {
+          const audioJoin = meta.joins.find((join) => join.table === 'dm_actors_audio');
+          if (!audioJoin) throw httpError(404, 'Required table not found: dm_actors_audio');
+          const audioRow = await client.query(
+            `SELECT * FROM ${quoteIdent('dm_actors_audio')}
+              WHERE ${quoteIdent('id')} = $1 AND ${quoteIdent('value_group_id')} = $2`,
+            [existing.rows[0].id, existing.rows[0].value_group_id]
+          );
+          const audioValues = {
+            ...(audioRow.rows[0] || {}),
+            ...(subtypeValues.dm_actors_audio || {}),
+          };
+          await validateAudioReferences(client, actor, audioValues);
+        }
+      }
       let row;
       let changed = false;
       if (set.length > 0) {

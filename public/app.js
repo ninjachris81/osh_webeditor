@@ -79,6 +79,8 @@ const NATIVE_FUNCTION_TYPES = [
   { value: 12, label: 'NFT_INIT_FOLLOW_ACTOR' },
   { value: 13, label: 'NFT_START_TIMER' },
   { value: 14, label: 'NFT_STOP_TIMER' },
+  { value: 15, label: 'NFT_INIT_MAP_CMD' },
+  { value: 16, label: 'NFT_INIT_TURN_ON_WHILE_TIMER_ACTIVE' },
 ];
 
 const PROCESSOR_TASK_TRIGGER_TYPES = [
@@ -1465,6 +1467,13 @@ createApp({
         if (option) return `${option.label} (${value})`;
       }
       return this.formatValue(value);
+    },
+
+    quickfilterLabel(columnName, value) {
+      if (this.currentTable === 'dm_processor_tasks' && columnName === 'function_code') {
+        return this.formatCellValue(this.currentTable, columnName, value);
+      }
+      return value === null ? 'NULL' : String(value);
     },
 
     isProcessorTaskParameterColumn(columnName) {

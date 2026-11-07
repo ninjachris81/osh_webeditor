@@ -21,7 +21,7 @@ const MAIN_TABLES = [
 
 // Columns that get a per-value quickfilter dropdown in the table header
 // (any boolean column gets one too - see isQuickfilterColumn).
-const QUICKFILTER_COLUMNS = new Set(['value_group_id', 'group_id', 'known_area_id', 'class_type', 'value_type']);
+const QUICKFILTER_COLUMNS = new Set(['value_group_id', 'group_id', 'known_area_id', 'class_type', 'value_type', 'function_code']);
 
 // Columns that are edited via a combobox of values looked up from another
 // table. The stored value is <refColumn>, the dropdown label is <labelColumn>.
@@ -182,7 +182,15 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
     if (!tables.some((t) => t.name === tableName)) {
       throw httpError(404, `Unknown table: ${tableName}`);
     }
-    const rawColumns = await schemaCache.columns(tableName);
+    const rawColumns = [...await schemaCache.columns(tableName)];
+    if (tableName === 'dm_processor_tasks') {
+      const functionCodeIndex = rawColumns.findIndex((column) => column.name === 'function_code');
+      const parameterIndex = rawColumns.findIndex((column) => column.name === 'param_0');
+      if (functionCodeIndex !== -1 && parameterIndex !== -1 && functionCodeIndex > parameterIndex) {
+        const [functionCodeColumn] = rawColumns.splice(functionCodeIndex, 1);
+        rawColumns.splice(parameterIndex, 0, functionCodeColumn);
+      }
+    }
     const primaryKey = rawColumns.filter((c) => c.isPrimaryKey).map((c) => c.name);
 
     // Base columns are qualified with the "base" alias so queries stay valid

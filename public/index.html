@@ -412,7 +412,7 @@
                           :value="filterValue(col.name)" @click.stop @change="setFilter(col.name, $event.target.value)">
                     <option value="">(all)</option>
                     <option v-for="(opt, i) in (filterOptions[col.name] || [])" :key="i"
-                            :value="opt === null ? '__NULL__' : String(opt)">{{ opt === null ? 'NULL' : String(opt) }}</option>
+                            :value="opt === null ? '__NULL__' : String(opt)">{{ quickfilterLabel(col.name, opt) }}</option>
                   </select>
                 </th>
                 <th class="actions-col">Actions</th>

@@ -630,7 +630,14 @@
           <div class="watch-heading">
             <div>
               <h2 id="watch-title">MQTT watch</h2>
-              <div class="watch-topic">{{ watch.topic }}</div>
+              <div class="watch-topic-row">
+                <div class="watch-topic">{{ watch.topic }}</div>
+                <button class="small watch-copy-button" @click="copyWatchTopic" aria-label="Copy MQTT path" title="Copy MQTT path">
+                  <svg viewBox="0 0 16 16" aria-hidden="true">
+                    <path d="M5 5V2.5A1.5 1.5 0 0 1 6.5 1h7A1.5 1.5 0 0 1 15 2.5v7a1.5 1.5 0 0 1-1.5 1.5H11v2.5a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 1 13.5v-7A1.5 1.5 0 0 1 2.5 5H5Zm1.5 0h3A1.5 1.5 0 0 1 11 6.5V9h2.5V2.5h-7V5Zm3 1.5h-7v7h7v-7Z" fill="currentColor"/>
+                  </svg>
+                </button>
+              </div>
             </div>
             <span class="watch-status" :class="'status-' + watch.status">{{ watch.statusText }}</span>
           </div>

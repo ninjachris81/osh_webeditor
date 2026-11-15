@@ -580,10 +580,29 @@ select:focus {
   margin-bottom: 4px;
 }
 
+.watch-topic-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .watch-topic {
   color: var(--muted);
   font: 12px monospace;
   overflow-wrap: anywhere;
+}
+
+.watch-copy-button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 6px;
+}
+
+.watch-copy-button svg {
+  width: 14px;
+  height: 14px;
 }
 
 .watch-status {

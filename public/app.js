@@ -869,6 +869,17 @@ createApp({
       if (this.watch) this.watch.show = false;
     },
 
+    async copyWatchTopic() {
+      this.watch.error = null;
+      this.watch.notice = null;
+      try {
+        await navigator.clipboard.writeText(this.watch.topic);
+        this.watch.notice = 'MQTT path copied to clipboard.';
+      } catch (err) {
+        this.watch.error = `Failed to copy MQTT path: ${err.message}`;
+      }
+    },
+
     async clearRetained() {
       this.watch.clearing = true;
       this.watch.error = null;

@@ -873,7 +873,25 @@ createApp({
       this.watch.error = null;
       this.watch.notice = null;
       try {
-        await navigator.clipboard.writeText(this.watch.topic);
+        const topic = this.watch.topic;
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(topic);
+        } else {
+          const textarea = document.createElement('textarea');
+          textarea.value = topic;
+          textarea.setAttribute('readonly', '');
+          textarea.style.position = 'fixed';
+          textarea.style.opacity = '0';
+          document.body.appendChild(textarea);
+          try {
+            textarea.select();
+            if (!document.execCommand('copy')) {
+              throw new Error('Clipboard access is unavailable in this browser.');
+            }
+          } finally {
+            textarea.remove();
+          }
+        }
         this.watch.notice = 'MQTT path copied to clipboard.';
       } catch (err) {
         this.watch.error = `Failed to copy MQTT path: ${err.message}`;

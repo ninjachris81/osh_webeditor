@@ -807,6 +807,8 @@ createApp({
         command: '1',
         sending: false,
         messages: [],
+        senderNames: {},
+        senderLookups: {},
       };
       const source = markRaw(new EventSource(`/api/watch?${params}`));
       this.watchSource = source;
@@ -832,8 +834,11 @@ createApp({
             ? ''
             : `${Object.prototype.hasOwnProperty.call(ACTOR_COMMANDS, data.c) ? ACTOR_COMMANDS[data.c] : 'Unknown command'} (${data.c})`;
           const rawValue = data.v;
+          const sender = data.s ?? '';
+          const senderKey = String(sender);
           this.watch.messages.unshift({
-            sender: data.s ?? '',
+            sender,
+            senderName: this.watch.senderNames[senderKey] || '',
             command,
             value: rawValue === undefined ? '' : (typeof rawValue === 'object' ? JSON.stringify(rawValue) : String(rawValue)),
             timestamp: Number.isFinite(timestamp) ? new Date(timestamp).toLocaleString() : 'Invalid timestamp',
@@ -843,6 +848,7 @@ createApp({
             inSync,
             retained,
           });
+          if (sender !== '') this.resolveWatchSender(sender, this.watch);
           if (this.watch.messages.length > 500) this.watch.messages.pop();
         } catch (err) {
           this.watch.error = `Invalid MQTT JSON payload: ${err.message}`;
@@ -861,6 +867,27 @@ createApp({
           this.watch.statusText = 'Reconnecting';
         }
       });
+    },
+
+    async resolveWatchSender(sender, watch) {
+      const senderId = String(sender);
+      if (Object.prototype.hasOwnProperty.call(watch.senderLookups, senderId)) return;
+      watch.senderLookups[senderId] = true;
+      try {
+        const params = new URLSearchParams({ id: senderId });
+        const { name } = await api(`/api/watch/sender-name?${params}`);
+        const senderName = name || '';
+        watch.senderNames[senderId] = senderName;
+        if (senderName) {
+          watch.messages.forEach((message) => {
+            if (String(message.sender) === senderId) message.senderName = senderName;
+          });
+        }
+      } catch (err) {
+        if (this.watch === watch) {
+          this.watch.error = `Failed to resolve MQTT sender ${senderId}: ${err.message}`;
+        }
+      }
     },
 
     closeWatch() {

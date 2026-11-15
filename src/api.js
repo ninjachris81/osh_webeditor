@@ -888,6 +888,37 @@ function createApiRouter({ pool, schemaCache, mqttConfig = {}, generalConfig = {
     });
   }));
 
+  router.get('/watch/sender-name', asyncHandler(async (req, res) => {
+    if (typeof req.query.id !== 'string' || req.query.id === '') {
+      throw httpError(400, 'A sender id is required.');
+    }
+
+    const tables = await schemaCache.tables();
+    if (!tables.some((table) => table.name === 'dm_known_devices')) {
+      throw httpError(404, 'Table not found: dm_known_devices');
+    }
+    const columns = await schemaCache.columns('dm_known_devices');
+    const idColumn = columns.find((column) => column.name === 'id');
+    if (!idColumn) {
+      throw httpError(500, 'Required column missing from dm_known_devices: id');
+    }
+    const nameColumn = columns.find((column) => column.name === 'name') ||
+      columns.find((column) => column.name === 'device_name');
+    if (!nameColumn) {
+      res.json({ name: null });
+      return;
+    }
+
+    const result = await pool.query(
+      `SELECT ${quoteIdent(nameColumn.name)} AS name
+         FROM ${quoteIdent('dm_known_devices')}
+        WHERE ${quoteIdent(idColumn.name)} = $1
+        LIMIT 1`,
+      [coerceValue(idColumn, req.query.id)]
+    );
+    res.json({ name: result.rows[0]?.name ?? null });
+  }));
+
   router.get('/watch', asyncHandler(async (req, res) => {
     const topicParts = {
       dm_actors: ['ac', req.query.value_group_id, req.query.id],

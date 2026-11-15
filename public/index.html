@@ -660,7 +660,7 @@
                   <td colspan="6" class="muted center">Waiting for messages</td>
                 </tr>
                 <tr v-for="(message, index) in watch.messages" :key="index">
-                  <td>{{ message.sender }}</td>
+                  <td>{{ message.sender }}<span v-if="message.senderName"> ({{ message.senderName }})</span></td>
                   <td>{{ message.command }}</td>
                   <td>{{ message.value }}</td>
                   <td>{{ message.timestamp }}</td>

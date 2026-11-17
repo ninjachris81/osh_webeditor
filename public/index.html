@@ -7,38 +7,75 @@
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
-  <div id="app">
-    <aside class="sidebar">
+  <div id="app" @keydown.esc.window="closeMobileNav">
+    <div class="mobile-topbar">
+      <button
+        ref="mobileNavToggle"
+        class="mobile-nav-toggle"
+        type="button"
+        @click="mobileNavOpen = !mobileNavOpen"
+        :aria-expanded="mobileNavOpen"
+        aria-controls="primary-navigation"
+      >
+        <span aria-hidden="true">☰</span>
+        Menu
+      </button>
+      <span class="mobile-brand">OSH DB Admin</span>
+    </div>
+
+    <aside id="primary-navigation" class="sidebar" aria-label="Primary navigation" :class="{ 'sidebar-open': mobileNavOpen }">
       <div class="brand">
         <span class="brand-title">OSH DB Admin</span>
         <span class="brand-sub">PostgreSQL table editor</span>
       </div>
 
+      <div class="sidebar-table-search">
+        <input
+          type="search"
+          v-model="navTableSearch"
+          placeholder="Find a table..."
+          aria-label="Find a database table"
+        />
+      </div>
+
       <ul class="nav overview-nav">
-        <li><a href="#" :class="{ active: currentView === 'system-overview' }" @click.prevent="showSystemOverview">System Overview</a></li>
-        <li><a href="#" :class="{ active: currentView === 'overview' }" @click.prevent="showStatusOverview">Status Overview</a></li>
-        <li><a href="#" :class="{ active: currentView === 'object-overview' }" @click.prevent="showObjectOverview">Object Overview</a></li>
-        <li><a href="#" :class="{ active: currentView === 'warning-log' }" @click.prevent="showWarningLog">Warning Log</a></li>
-        <li><a href="#" :class="{ active: currentView === 'audio-setup' }" @click.prevent="showAudioSetup">Audio Setup</a></li>
+        <li><a href="#" :class="{ active: currentView === 'system-overview' }" :aria-current="currentView === 'system-overview' ? 'page' : null" @click.prevent="showSystemOverview">System Overview</a></li>
+        <li><a href="#" :class="{ active: currentView === 'overview' }" :aria-current="currentView === 'overview' ? 'page' : null" @click.prevent="showStatusOverview">Status Overview</a></li>
+        <li><a href="#" :class="{ active: currentView === 'object-overview' }" :aria-current="currentView === 'object-overview' ? 'page' : null" @click.prevent="showObjectOverview">Object Overview</a></li>
+        <li><a href="#" :class="{ active: currentView === 'warning-log' }" :aria-current="currentView === 'warning-log' ? 'page' : null" @click.prevent="showWarningLog">Warning Log</a></li>
+        <li><a href="#" :class="{ active: currentView === 'audio-setup' }" :aria-current="currentView === 'audio-setup' ? 'page' : null" @click.prevent="showAudioSetup">Audio Setup</a></li>
       </ul>
 
       <div class="nav-section">Main tables</div>
       <ul class="nav">
-        <li v-for="t in mainTables" :key="t.name">
-          <a href="#" :class="{ active: currentTable === t.name }" @click.prevent="selectTable(t.name)">{{ t.name }}</a>
+        <li v-for="t in filteredMainTables" :key="t.name">
+          <a href="#" :class="{ active: currentTable === t.name }" :aria-current="currentTable === t.name ? 'page' : null" @click.prevent="selectTable(t.name)">{{ t.name }}</a>
         </li>
-        <li v-for="name in missingMain" :key="name" class="missing" :title="'Table not found in database'">{{ name }}</li>
+        <template v-if="!navTableSearch.trim()">
+          <li v-for="name in missingMain" :key="name" class="missing" :title="'Table not found in database'">{{ name }}</li>
+        </template>
       </ul>
 
-      <template v-if="otherTables.length">
+      <template v-if="filteredOtherTables.length">
         <div class="nav-section">Other tables</div>
         <ul class="nav">
-          <li v-for="t in otherTables" :key="t.name">
-            <a href="#" :class="{ active: currentTable === t.name }" @click.prevent="selectTable(t.name)">{{ t.name }}</a>
+          <li v-for="t in filteredOtherTables" :key="t.name">
+            <a href="#" :class="{ active: currentTable === t.name }" :aria-current="currentTable === t.name ? 'page' : null" @click.prevent="selectTable(t.name)">{{ t.name }}</a>
           </li>
         </ul>
       </template>
+      <div v-if="navTableSearch.trim() && !filteredMainTables.length && !filteredOtherTables.length" class="nav-no-results muted">
+        No matching tables
+      </div>
     </aside>
+    <button
+      v-if="mobileNavOpen"
+      class="sidebar-backdrop"
+      type="button"
+      tabindex="-1"
+      aria-label="Close navigation"
+      @click="closeMobileNav"
+    ></button>
 
     <main class="content">
       <div v-if="error" class="error-banner">
@@ -50,6 +87,8 @@
         <header class="toolbar">
           <h1>System Overview</h1>
           <span class="muted" v-if="!systemOverview.loading">{{ systemOverview.areas.length }} areas</span>
+          <button @click="setSystemAreasExpanded(true)" :disabled="!systemOverview.areas.length">Expand all</button>
+          <button @click="setSystemAreasExpanded(false)" :disabled="!systemOverview.areas.length">Collapse all</button>
           <span class="spacer"></span>
           <button @click="showSystemOverview">Refresh</button>
         </header>
@@ -94,8 +133,8 @@
                             <small v-else>-</small>
                           </span>
                           <div class="mindmap-actions">
-                            <button class="small" @click="openMindmapItem(actor, 'dm_actors')">Edit</button>
-                            <button class="small" @click="openWatch(actor, 'dm_actors')">Watch</button>
+                                    <button class="small" @click="openMindmapItem(actor, 'dm_actors')" :aria-label="'Edit actor ' + formatMindmapId(actor)">Edit</button>
+                                    <button class="small" @click="openWatch(actor, 'dm_actors')" :aria-label="'Watch actor ' + formatMindmapId(actor)">Watch</button>
                           </div>
                         </div>
                       </div>
@@ -113,8 +152,8 @@
                             <small v-else>-</small>
                           </span>
                           <div class="mindmap-actions">
-                            <button class="small" @click="openMindmapItem(value, 'dm_values')">Edit</button>
-                            <button class="small" @click="openWatch(value, 'dm_values')">Watch</button>
+                            <button class="small" @click="openMindmapItem(value, 'dm_values')" :aria-label="'Edit value ' + formatMindmapId(value)">Edit</button>
+                            <button class="small" @click="openWatch(value, 'dm_values')" :aria-label="'Watch value ' + formatMindmapId(value)">Watch</button>
                           </div>
                         </div>
                       </div>
@@ -133,15 +172,18 @@
         <header class="toolbar">
           <h1>Object Overview</h1>
           <span class="muted" v-if="!objectOverview.loading">
-            {{ filteredObjectGroups.length }}{{ objectOverview.searchTerm.trim() ? ' / ' + objectOverview.groups.length : '' }} value groups
+            {{ filteredObjectGroups.length }} / {{ objectOverview.groups.length }} groups
+            <span v-if="objectOverview.searchTerm.trim()">· {{ matchingObjectCount }} objects shown</span>
           </span>
+          <button @click="expandObjectGroups(true)" :disabled="!objectOverview.groups.length || !!objectOverview.searchTerm.trim()">Expand all</button>
+          <button @click="expandObjectGroups(false)" :disabled="!objectOverview.groups.length || !!objectOverview.searchTerm.trim()">Collapse all</button>
           <span class="spacer"></span>
           <input
             class="search"
             type="search"
             v-model="objectOverview.searchTerm"
-            placeholder="Filter by group ID or comment..."
-            aria-label="Filter value groups by ID or comment"
+            placeholder="Find a group, actor, or value..."
+            aria-label="Find a value group, actor, or value"
           />
           <button @click="showObjectOverview">Refresh</button>
         </header>
@@ -152,18 +194,19 @@
         <div v-else class="mindmap-scroll">
           <div class="mindmap-root">
             <section v-for="group in filteredObjectGroups" :key="group.id" class="mindmap-area">
-              <button class="mindmap-node value-group-node" @click="toggleObjectGroup(group.id)" :aria-expanded="!!objectOverview.expandedGroups[group.id]">
-                <span class="fold-mark">{{ objectOverview.expandedGroups[group.id] ? '−' : '+' }}</span>
+              <button class="mindmap-node value-group-node" @click="toggleObjectGroup(group.id)"
+                      :aria-expanded="isObjectGroupExpanded(group)" :disabled="!!objectOverview.searchTerm.trim()">
+                <span class="fold-mark">{{ isObjectGroupExpanded(group) ? '−' : '+' }}</span>
                 <span class="value-group-label">
                   <span>dm_value_groups: {{ group.id }}</span>
                   <small class="value-group-comment">{{ group.comment && String(group.comment).trim() ? group.comment : '-' }}</small>
                 </span>
               </button>
-              <div v-if="objectOverview.expandedGroups[group.id]" class="mindmap-children object-groups">
-                <section v-if="group.actors.length" class="object-group">
+              <div v-if="isObjectGroupExpanded(group)" class="mindmap-children object-groups">
+                <section v-if="objectItems(group, 'actors').length" class="object-group">
                   <h3>Actors</h3>
                   <div class="object-nodes">
-                    <div v-for="(actor, index) in group.actors" :key="actor.value_group_id + ':' + actor.id + ':' + index" class="mindmap-node actor-node">
+                    <div v-for="(actor, index) in objectItems(group, 'actors')" :key="actor.value_group_id + ':' + actor.id + ':' + index" class="mindmap-node actor-node">
                       <span class="mindmap-item-label">
                         <span v-if="actor.latestValue !== undefined && actor.latestValue !== null" :key="actor.valueRevision" class="mindmap-live-value">{{ formatValue(actor.latestValue) }}</span>
                         <span v-else class="mindmap-live-value mindmap-value-placeholder">-</span>
@@ -173,16 +216,16 @@
                         <small v-else>-</small>
                       </span>
                       <div class="mindmap-actions">
-                        <button class="small" @click="openMindmapItem(actor, 'dm_actors')">Edit</button>
-                        <button class="small" @click="openWatch(actor, 'dm_actors')">Watch</button>
+                        <button class="small" @click="openMindmapItem(actor, 'dm_actors')" :aria-label="'Edit actor ' + formatMindmapId(actor)">Edit</button>
+                        <button class="small" @click="openWatch(actor, 'dm_actors')" :aria-label="'Watch actor ' + formatMindmapId(actor)">Watch</button>
                       </div>
                     </div>
                   </div>
                 </section>
-                <section v-if="group.values.length" class="object-group">
+                <section v-if="objectItems(group, 'values').length" class="object-group">
                   <h3>Values</h3>
                   <div class="object-nodes">
-                    <div v-for="(value, index) in group.values" :key="value.value_group_id + ':' + value.id + ':' + index" class="mindmap-node value-node">
+                    <div v-for="(value, index) in objectItems(group, 'values')" :key="value.value_group_id + ':' + value.id + ':' + index" class="mindmap-node value-node">
                       <span class="mindmap-item-label">
                         <span v-if="value.latestValue !== undefined && value.latestValue !== null" :key="value.valueRevision" class="mindmap-live-value">{{ formatValue(value.latestValue) }}</span>
                         <span v-else class="mindmap-live-value mindmap-value-placeholder">-</span>
@@ -192,13 +235,13 @@
                         <small v-else>-</small>
                       </span>
                       <div class="mindmap-actions">
-                        <button class="small" @click="openMindmapItem(value, 'dm_values')">Edit</button>
-                        <button class="small" @click="openWatch(value, 'dm_values')">Watch</button>
+                        <button class="small" @click="openMindmapItem(value, 'dm_values')" :aria-label="'Edit value ' + formatMindmapId(value)">Edit</button>
+                        <button class="small" @click="openWatch(value, 'dm_values')" :aria-label="'Watch value ' + formatMindmapId(value)">Watch</button>
                       </div>
                     </div>
                   </div>
                 </section>
-                <span v-if="group.actors.length === 0 && group.values.length === 0" class="muted">No actors or values</span>
+                <span v-if="!objectItems(group, 'actors').length && !objectItems(group, 'values').length" class="muted">No actors or values</span>
               </div>
             </section>
           </div>
@@ -208,7 +251,10 @@
       <section v-else-if="currentView === 'overview'" class="status-overview">
         <header class="toolbar">
           <h1>Status Overview</h1>
-          <span class="muted">{{ onlineDeviceCount }} / {{ filteredStatusDevices.length }} online</span>
+          <span v-if="statusOverview.loading" class="muted">Loading devices&hellip;</span>
+          <span v-else class="muted">
+            {{ onlineDeviceCount }} online · {{ filteredStatusDevices.length }} of {{ statusOverview.devices.length }} shown
+          </span>
           <span
             v-if="!statusOverview.loading && !statusOverview.searchTerm.trim() && mandatoryDevices.length"
             class="overall-state"
@@ -226,15 +272,19 @@
             placeholder="Filter by ID, service ID, or name..."
             aria-label="Filter devices by ID, service ID, or name"
           />
+          <label class="inline-toggle">
+            <input type="checkbox" v-model="statusOverview.showDatabaseFields" />
+            Show database fields
+          </label>
           <span class="watch-status" :class="'status-' + statusOverview.connection">{{ statusOverview.connectionText }}</span>
           <button @click="showStatusOverview">Refresh</button>
         </header>
         <div v-if="statusOverview.error" class="error-banner">{{ statusOverview.error }}</div>
-        <div class="grid-wrap">
+        <div class="grid-wrap status-desktop-grid">
           <table class="grid status-grid">
             <thead>
               <tr>
-                <th v-for="column in statusDeviceColumns" :key="column">{{ column }}</th>
+                <th v-for="column in (statusOverview.showDatabaseFields ? statusDeviceColumns : [])" :key="column">{{ column }}</th>
                 <th>Name</th>
                 <th>Device name</th>
                 <th>Online</th>
@@ -248,14 +298,14 @@
             </thead>
             <tbody>
               <tr v-if="statusOverview.loading">
-                <td :colspan="statusDeviceColumns.length + 9" class="muted center">Loading devices&hellip;</td>
+                <td :colspan="(statusOverview.showDatabaseFields ? statusDeviceColumns.length : 0) + 9" class="muted center">Loading devices&hellip;</td>
               </tr>
               <tr v-else-if="filteredStatusDevices.length === 0">
-                <td v-if="statusOverview.devices.length === 0" :colspan="statusDeviceColumns.length + 9" class="muted center">No known devices</td>
-                <td v-else :colspan="statusDeviceColumns.length + 9" class="muted center">No devices match this filter</td>
+                <td v-if="statusOverview.devices.length === 0" :colspan="(statusOverview.showDatabaseFields ? statusDeviceColumns.length : 0) + 9" class="muted center">No known devices</td>
+                <td v-else :colspan="(statusOverview.showDatabaseFields ? statusDeviceColumns.length : 0) + 9" class="muted center">No devices match this filter</td>
               </tr>
               <tr v-for="device in filteredStatusDevices" :key="device.id + ':' + device.serviceId">
-                <td v-for="column in statusDeviceColumns" :key="column">{{ device.details[column] === null ? 'NULL' : device.details[column] === undefined ? '—' : formatValue(device.details[column]) }}</td>
+                <td v-for="column in (statusOverview.showDatabaseFields ? statusDeviceColumns : [])" :key="column">{{ device.details[column] === null ? 'NULL' : device.details[column] === undefined ? '—' : formatValue(device.details[column]) }}</td>
                 <td>
                   <template v-if="device.unknown">
                     Unknown Service
@@ -282,13 +332,61 @@
                 <td>{{ device.messageTimestamp ? new Date(device.messageTimestamp).toLocaleString() : '—' }}</td>
                 <td>{{ device.lastMessageAt === null ? '—' : formatTimeAgo(device.lastMessageAt) }}</td>
                 <td class="actions">
-                  <button v-if="!device.unknown" class="small" @click="openKnownDevice(device)">Open device</button>
+                  <button v-if="!device.unknown" class="small" @click="openKnownDevice(device)" :aria-label="'Open device ' + device.displayName">Open device</button>
                 </td>
               </tr>
             </tbody>
           </table>
         </div>
-        <div class="status-footnote muted">Online after a heartbeat; offline after {{ statusOverview.onlineTimeoutSeconds }} seconds without one.</div>
+        <div class="status-mobile-list">
+          <p v-if="statusOverview.loading" class="muted center">Loading devices&hellip;</p>
+          <p v-else-if="filteredStatusDevices.length === 0" class="muted center">
+            {{ statusOverview.devices.length === 0 ? 'No known devices' : 'No devices match this filter' }}
+          </p>
+          <article v-for="device in filteredStatusDevices" :key="device.id + ':' + device.serviceId" class="status-device-card">
+            <header class="status-device-card-heading">
+              <div>
+                <strong>{{ device.displayName }}</strong>
+                <small>ID {{ device.id }} · {{ device.serviceId }}</small>
+              </div>
+              <span class="device-presence" :class="isDeviceOnline(device) ? 'online' : 'offline'">
+                <span class="presence-dot"></span>{{ isDeviceOnline(device) ? 'Online' : 'Offline' }}
+              </span>
+            </header>
+            <dl class="status-device-details">
+              <div>
+                <dt>Health</dt>
+                <dd>
+                  <span class="health-status"
+                        :class="device.health === null ? 'health-unknown' : device.health ? 'health-healthy' : 'health-unhealthy'">
+                    {{ device.health === null ? 'Unknown' : device.health ? 'Healthy' : 'Unhealthy' }}
+                  </span>
+                </dd>
+              </div>
+              <div><dt>Device name</dt><dd>{{ device.deviceName || '—' }}</dd></div>
+              <div><dt>Uptime</dt><dd>{{ device.uptime === null ? '—' : device.uptime }}</dd></div>
+              <div><dt>Sender</dt><dd>{{ device.senderId || '—' }}</dd></div>
+              <div><dt>Last received</dt><dd>{{ device.lastMessageAt === null ? '—' : formatTimeAgo(device.lastMessageAt) }}</dd></div>
+              <div><dt>Message timestamp</dt><dd>{{ device.messageTimestamp ? new Date(device.messageTimestamp).toLocaleString() : '—' }}</dd></div>
+            </dl>
+            <details v-if="statusOverview.showDatabaseFields" class="status-device-raw">
+              <summary>Database fields</summary>
+              <dl class="status-device-details">
+                <div v-for="column in statusDeviceColumns" :key="column">
+                  <dt>{{ column }}</dt>
+                  <dd>{{ device.details[column] === null ? 'NULL' : device.details[column] === undefined ? '—' : formatValue(device.details[column]) }}</dd>
+                </div>
+              </dl>
+            </details>
+            <div class="status-device-actions">
+              <button v-if="device.unknown" class="small register-device" @click="openRegisterDevice(device)">Register device</button>
+              <button v-else class="small" @click="openKnownDevice(device)" :aria-label="'Open device ' + device.displayName">Open device</button>
+            </div>
+          </article>
+        </div>
+        <div class="status-footnote muted">
+          Offline or unhealthy devices appear first. Online after a heartbeat; offline after {{ statusOverview.onlineTimeoutSeconds }} seconds without one.
+        </div>
       </section>
 
       <section v-else-if="currentView === 'audio-setup'" class="audio-setup-view">
@@ -383,10 +481,25 @@
           <span class="muted" v-if="schema">{{ total }} row{{ total === 1 ? '' : 's' }}</span>
           <span class="spacer"></span>
           <input class="search" type="search" placeholder="Search all columns..."
-                 v-model="searchInput" @keyup.enter="applySearch" />
+                 v-model="searchInput" @keyup.enter="applySearch" aria-label="Search all columns in this table" />
           <button @click="applySearch">Search</button>
           <button @click="loadRows">Refresh</button>
           <button class="primary" @click="openCreate" :disabled="!schema">+ New row</button>
+          <details class="column-picker" v-if="schema">
+            <summary>Columns ({{ visibleTableColumns.length }})</summary>
+            <div class="column-picker-options">
+              <label v-for="column in schema.columns" :key="column.name">
+                <input
+                  type="checkbox"
+                  :checked="column.isPrimaryKey || !hiddenColumns.includes(column.name)"
+                  :disabled="column.isPrimaryKey"
+                  @change="setTableColumnVisible(column.name, $event.target.checked)"
+                />
+                {{ column.name }}<span v-if="column.isPrimaryKey" class="muted"> · key</span>
+              </label>
+              <button class="small" type="button" @click="hiddenColumns = []">Show all columns</button>
+            </div>
+          </details>
         </header>
 
         <div v-if="schema && schema.primaryKey.length === 0" class="warning-banner">
@@ -397,19 +510,15 @@
           <table class="grid">
             <thead>
               <tr>
-                <th v-for="col in schema.columns" :key="col.name" class="sortable">
-                  <span class="th-label" @click="sortBy(col.name)">
+                <th v-for="col in visibleTableColumns" :key="col.name" class="sortable"
+                    :aria-sort="orderBy === col.name ? (dir === 'asc' ? 'ascending' : 'descending') : 'none'">
+                  <button class="th-label" type="button" @click="sortBy(col.name)" :aria-label="'Sort by ' + col.name">
                     {{ col.name }}
-                    <!--<span class="pk" v-if="col.isPrimaryKey">PK</span> -->
-                    <!--
-                    <span class="joined-src" v-if="col.source"
-                          :title="'Joined from ' + col.source + (col.classType ? ' for ' + col.classType : '')">{{ col.source.replace('dm_', '') }}</span>
-                          -->
                     <span class="sort-ind" v-if="orderBy === col.name">{{ dir === 'asc' ? '&#9650;' : '&#9660;' }}</span>
-                    <!-- <span class="col-type">{{ col.type }}</span> -->
-                  </span>
+                  </button>
                   <select v-if="col.quickfilter" class="quickfilter" :class="{ active: hasFilter(col.name) }"
-                          :value="filterValue(col.name)" @click.stop @change="setFilter(col.name, $event.target.value)">
+                          :value="filterValue(col.name)" :aria-label="'Filter by ' + col.name"
+                          @click.stop @change="setFilter(col.name, $event.target.value)">
                     <option value="">(all)</option>
                     <option v-for="(opt, i) in (filterOptions[col.name] || [])" :key="i"
                             :value="opt === null ? '__NULL__' : String(opt)">{{ quickfilterLabel(col.name, opt) }}</option>
@@ -420,13 +529,13 @@
             </thead>
             <tbody>
               <tr v-if="loading">
-                <td :colspan="schema.columns.length + 1" class="muted center">Loading&hellip;</td>
+                <td :colspan="visibleTableColumns.length + 1" class="muted center">Loading&hellip;</td>
               </tr>
               <tr v-else-if="rows.length === 0">
-                <td :colspan="schema.columns.length + 1" class="muted center">No rows</td>
+                <td :colspan="visibleTableColumns.length + 1" class="muted center">No rows</td>
               </tr>
               <tr v-else v-for="(row, idx) in rows" :key="idx">
-                <td v-for="col in schema.columns" :key="col.name" :title="formatTitle(row[col.name])">
+                <td v-for="col in visibleTableColumns" :key="col.name" :title="formatTitle(row[col.name])">
                   <span v-if="row[col.name] === null" class="null">NULL</span>
                   <span v-else-if="currentTable === 'dm_processor_tasks' && isProcessorTaskParameterColumn(col.name)">
                     <template v-for="(segment, segmentIndex) in processorVariableSegments(row[col.name])" :key="segmentIndex">
@@ -443,10 +552,10 @@
                 </td>
                 <td class="actions">
                   <button v-if="currentTable === 'dm_actors' || currentTable === 'dm_values'"
-                          class="small" @click="openWatch(row)">Watch</button>
-                  <button class="small" @click="openEdit(row)" :disabled="schema.primaryKey.length === 0">Edit</button>
-                  <button class="small" @click="openDuplicate(row)">Duplicate</button>
-                  <button class="small danger" @click="deleteRow(row)" :disabled="schema.primaryKey.length === 0">Delete</button>
+                          class="small" @click="openWatch(row)" :aria-label="'Watch ' + rowIdentity(row)">Watch</button>
+                  <button class="small" @click="openEdit(row)" :aria-label="'Edit ' + rowIdentity(row)" :disabled="schema.primaryKey.length === 0">Edit</button>
+                  <button class="small" @click="openDuplicate(row)" :aria-label="'Duplicate ' + rowIdentity(row)">Duplicate</button>
+                  <button class="small danger" @click="deleteRow(row)" :aria-label="'Delete ' + rowIdentity(row)" :disabled="schema.primaryKey.length === 0">Delete</button>
                 </td>
               </tr>
             </tbody>
@@ -472,33 +581,76 @@
 
       <!-- Row editor modal -->
       <div class="modal-backdrop" v-if="editor.show" @click.self="closeEditor">
-        <div class="modal">
-          <h2>{{ editor.duplicate ? 'Duplicate row' : editor.mode === 'create' ? 'New row' : 'Edit row' }} &mdash; {{ currentTable }}</h2>
+        <section
+          ref="editorDialog"
+          class="modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="editor-title"
+          aria-describedby="editor-help"
+          tabindex="-1"
+          :aria-busy="editor.saving"
+          @keydown.esc.stop.prevent="closeEditor"
+          @keydown.tab="trapDialogFocus"
+        >
+          <header class="editor-modal-header">
+            <div>
+              <h2 id="editor-title">{{ editor.duplicate ? 'Duplicate row' : editor.mode === 'create' ? 'New row' : 'Edit row' }} &mdash; {{ currentTable }}</h2>
+              <p v-if="editorIdentity" class="editor-identity">{{ editorIdentity }}</p>
+              <p id="editor-help" class="editor-help">
+                Use Set NULL to store a database NULL.
+                <span v-if="editor.mode === 'create'">Leave a field blank to use its database default.</span>
+              </p>
+            </div>
+            <button
+              class="modal-close"
+              type="button"
+              aria-label="Close edit dialog"
+              title="Close"
+              :disabled="editor.saving"
+              @click="closeEditor"
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="m4 4 8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              </svg>
+            </button>
+          </header>
 
-          <div v-if="editor.error" class="error-banner">{{ editor.error }}</div>
+          <div v-if="editor.error" ref="editorError" class="error-banner" role="alert" tabindex="-1">{{ editor.error }}</div>
 
           <div class="form">
             <div class="form-row" v-for="field in visibleEditorFields" :key="field.name">
-              <label class="field-label">
+              <label class="field-label" :for="editorFieldId(field)">
                 <span class="field-name">{{ field.name }}</span>
                 <span class="field-meta">
                   {{ field.type }}<span v-if="field.isPrimaryKey"> &middot; PK</span><span v-if="field.nullable"> &middot; nullable</span><span v-if="field.hasDefault"> &middot; has default</span><span v-if="field.source"> &middot; from {{ field.source }}</span>
                 </span>
               </label>
               <div class="field-input">
-                <select v-if="field.type === 'boolean'" v-model="field.value"
-                        :disabled="field.isNull || isPkLocked(field)">
-                  <option v-if="editor.mode === 'create' && field.value === ''" value="" disabled>(select)</option>
-                  <option :value="true">true</option>
-                  <option :value="false">false</option>
-                </select>
+                <label v-if="field.type === 'boolean'" class="boolean-toggle">
+                  <input
+                    :id="editorFieldId(field)"
+                    type="checkbox"
+                    role="switch"
+                    :checked="field.value === true || field.value === 'true'"
+                    :aria-label="'Enable ' + field.name"
+                    :disabled="field.isNull || isPkLocked(field)"
+                    @change="field.value = $event.target.checked"
+                  />
+                  <span class="boolean-switch-track" aria-hidden="true"><span></span></span>
+                  <span class="boolean-toggle-state">
+                    {{ field.value === true || field.value === 'true' ? 'On' : 'Off' }}
+                  </span>
+                </label>
                 <select v-else-if="field.name === 'value_type' && (currentTable === 'dm_actors' || currentTable === 'dm_values')"
+                        :id="editorFieldId(field)"
                         v-model="field.value" :disabled="field.isNull || isPkLocked(field)">
                   <option v-if="editor.mode === 'create' && field.value === ''" value="" disabled>(select)</option>
                   <option v-if="valueTypeMissing(field)" :value="field.value">{{ field.value }} (unknown value type)</option>
                   <option v-for="option in valueTypeOptions" :key="option.value" :value="option.value">{{ option.label }} ({{ option.value }})</option>
                 </select>
                 <select v-else-if="currentTable === 'dm_processor_tasks' && field.name === 'function_code'"
+                        :id="editorFieldId(field)"
                         v-model="field.value" :disabled="field.isNull || isPkLocked(field)">
                   <option v-if="editor.mode === 'create' && field.value === ''" value="" disabled>(select)</option>
                   <option v-if="nativeFunctionTypeMissing(field)" :value="field.value">{{ field.value }} (unknown function code)</option>
@@ -507,6 +659,7 @@
                   </option>
                 </select>
                 <select v-else-if="currentTable === 'dm_processor_tasks' && field.name === 'task_trigger_type'"
+                        :id="editorFieldId(field)"
                         v-model="field.value" :disabled="field.isNull || isPkLocked(field)">
                   <option v-if="editor.mode === 'create' && field.value === ''" value="" disabled>(select)</option>
                   <option v-if="processorTaskTriggerTypeMissing(field)" :value="field.value">{{ field.value }} (unknown trigger type)</option>
@@ -515,6 +668,7 @@
                   </option>
                 </select>
                 <select v-else-if="currentTable === 'dm_processor_tasks' && field.name === 'task_type'"
+                        :id="editorFieldId(field)"
                         v-model="field.value" :disabled="field.isNull || isPkLocked(field)">
                   <option v-if="editor.mode === 'create' && field.value === ''" value="" disabled>(select)</option>
                   <option v-if="processorTaskTypeMissing(field)" :value="field.value">{{ field.value }} (unknown task type)</option>
@@ -524,7 +678,7 @@
                 </select>
                 <template v-else-if="field.audioValueType">
                   <div class="audio-reference-controls">
-                    <select v-model="field.value" :disabled="field.isNull || isPkLocked(field)">
+                    <select :id="editorFieldId(field)" v-model="field.value" :disabled="field.isNull || isPkLocked(field)">
                       <option v-if="field.value === ''" value="" disabled>(select a {{ field.audioValueType }})</option>
                       <option v-if="field.value !== '' && !field.options.some(option => String(option.value) === String(field.value))"
                               :value="field.value">⚠ {{ field.value }} (not a {{ field.audioValueType }})</option>
@@ -556,17 +710,18 @@
                     </div>
                   </div>
                 </template>
-                <select v-else-if="field.lookup && lookupOptionsFor(field).length" v-model="field.value"
+                <select v-else-if="field.lookup && lookupOptionsFor(field).length"
+                        :id="editorFieldId(field)" v-model="field.value"
                         :disabled="field.isNull || isPkLocked(field)">
                   <option v-if="editor.mode === 'create' && field.value === ''" value="" disabled>(select)</option>
                   <option v-if="lookupValueMissing(field)" :value="field.value">⚠ {{ field.value }} (not in {{ field.lookup.refTable }})</option>
                   <option v-for="opt in lookupOptionsFor(field)" :key="opt.value" :value="String(opt.value)">{{ opt.label }} ({{ opt.value }})</option>
                 </select>
-                <input v-else-if="isNumeric(field.type)" type="number" step="any" v-model="field.value"
+                <input v-else-if="isNumeric(field.type)" :id="editorFieldId(field)" type="number" step="any" v-model="field.value"
                        :disabled="field.isNull || isPkLocked(field)"
                        :placeholder="field.hasDefault ? 'default: ' + field.default : ''" />
                 <template v-else>
-                  <input type="text" v-model="field.value"
+                  <input :id="editorFieldId(field)" type="text" v-model="field.value"
                          :disabled="field.isNull || isPkLocked(field) || field.audioActorTypeLocked"
                          :placeholder="field.hasDefault ? 'default: ' + field.default : ''"
                          :list="field.name === 'class_type' ? 'class-type-options' : null" />
@@ -575,7 +730,8 @@
                   </datalist>
                 </template>
                 <label class="null-toggle" v-if="field.nullable && !field.isPrimaryKey && !field.audioValueType">
-                  <input type="checkbox" v-model="field.isNull" /> NULL
+                  <input type="checkbox" v-model="field.isNull" :aria-label="'Set ' + field.name + ' to NULL'" />
+                  <span>Set NULL</span>
                 </label>
               </div>
             </div>
@@ -593,7 +749,7 @@
                     (area {{ editor.roomAssignments.rooms.find(room => String(room.id) === roomId).known_area_id }})
                   </small>
                 </span>
-                <button class="small danger" @click="removeRoomAssignment(roomId)"
+                <button class="small danger" @click="removeRoomAssignment(roomId)" :aria-label="'Remove room ' + roomId"
                         :disabled="editor.roomAssignments.removingRoomIds.includes(roomId)">
                   {{ editor.roomAssignments.removingRoomIds.includes(roomId) ? 'Removing...' : 'Remove' }}
                 </button>
@@ -601,7 +757,8 @@
             </ul>
             <div v-else-if="!editor.roomAssignments.loading" class="muted">No rooms assigned</div>
             <div class="room-assignment-add">
-              <select v-model="editor.roomAssignments.selectedRoomId" :disabled="editor.roomAssignments.loading || editor.roomAssignments.adding">
+              <select v-model="editor.roomAssignments.selectedRoomId" aria-label="Select a room to assign"
+                      :disabled="editor.roomAssignments.loading || editor.roomAssignments.adding">
                 <option value="">Select a room</option>
                 <option v-for="room in editor.roomAssignments.rooms.filter(room => !isRoomAssigned(room.id))"
                         :key="room.id" :value="String(room.id)">
@@ -615,18 +772,27 @@
             </div>
           </section>
 
-          <div class="modal-actions">
-            <button @click="closeEditor">Cancel</button>
+          <div class="modal-actions editor-modal-actions">
+            <button @click="closeEditor" :disabled="editor.saving">Cancel</button>
             <button class="primary" @click="saveRow"
                     :disabled="editor.saving || editor.fields.some(field => field.audioValueType && (field.isNull || field.value === ''))">
-              {{ editor.saving ? 'Saving...' : 'Save' }}
+              {{ editor.saving ? 'Saving...' : editor.mode === 'edit' ? 'Save changes' : editor.duplicate ? 'Create duplicate' : 'Create row' }}
             </button>
           </div>
-        </div>
+        </section>
       </div>
 
       <div class="modal-backdrop" v-if="watch.show" @click.self="closeWatch">
-        <section class="modal watch-modal" role="dialog" aria-modal="true" aria-labelledby="watch-title">
+        <section
+          ref="watchDialog"
+          class="modal watch-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="watch-title"
+          tabindex="-1"
+          @keydown.esc.stop.prevent="closeWatch"
+          @keydown.tab="trapDialogFocus"
+        >
           <div class="watch-heading">
             <div>
               <h2 id="watch-title">MQTT watch</h2>

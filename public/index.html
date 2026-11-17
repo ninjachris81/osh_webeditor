@@ -627,12 +627,21 @@
                 </span>
               </label>
               <div class="field-input">
-                <select v-if="field.type === 'boolean'" :id="editorFieldId(field)" v-model="field.value"
-                        :disabled="field.isNull || isPkLocked(field)">
-                  <option v-if="editor.mode === 'create' && field.value === ''" value="" disabled>(select)</option>
-                  <option :value="true">true</option>
-                  <option :value="false">false</option>
-                </select>
+                <label v-if="field.type === 'boolean'" class="boolean-toggle">
+                  <input
+                    :id="editorFieldId(field)"
+                    type="checkbox"
+                    role="switch"
+                    :checked="field.value === true || field.value === 'true'"
+                    :aria-label="'Enable ' + field.name"
+                    :disabled="field.isNull || isPkLocked(field)"
+                    @change="field.value = $event.target.checked"
+                  />
+                  <span class="boolean-switch-track" aria-hidden="true"><span></span></span>
+                  <span class="boolean-toggle-state">
+                    {{ field.value === true || field.value === 'true' ? 'On' : 'Off' }}
+                  </span>
+                </label>
                 <select v-else-if="field.name === 'value_type' && (currentTable === 'dm_actors' || currentTable === 'dm_values')"
                         :id="editorFieldId(field)"
                         v-model="field.value" :disabled="field.isNull || isPkLocked(field)">

@@ -587,13 +587,36 @@
           role="dialog"
           aria-modal="true"
           aria-labelledby="editor-title"
+          aria-describedby="editor-help"
           tabindex="-1"
+          :aria-busy="editor.saving"
           @keydown.esc.stop.prevent="closeEditor"
           @keydown.tab="trapDialogFocus"
         >
-          <h2 id="editor-title">{{ editor.duplicate ? 'Duplicate row' : editor.mode === 'create' ? 'New row' : 'Edit row' }} &mdash; {{ currentTable }}</h2>
+          <header class="editor-modal-header">
+            <div>
+              <h2 id="editor-title">{{ editor.duplicate ? 'Duplicate row' : editor.mode === 'create' ? 'New row' : 'Edit row' }} &mdash; {{ currentTable }}</h2>
+              <p v-if="editorIdentity" class="editor-identity">{{ editorIdentity }}</p>
+              <p id="editor-help" class="editor-help">
+                Use Set NULL to store a database NULL.
+                <span v-if="editor.mode === 'create'">Leave a field blank to use its database default.</span>
+              </p>
+            </div>
+            <button
+              class="modal-close"
+              type="button"
+              aria-label="Close edit dialog"
+              title="Close"
+              :disabled="editor.saving"
+              @click="closeEditor"
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="m4 4 8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              </svg>
+            </button>
+          </header>
 
-          <div v-if="editor.error" class="error-banner">{{ editor.error }}</div>
+          <div v-if="editor.error" ref="editorError" class="error-banner" role="alert" tabindex="-1">{{ editor.error }}</div>
 
           <div class="form">
             <div class="form-row" v-for="field in visibleEditorFields" :key="field.name">
@@ -698,7 +721,8 @@
                   </datalist>
                 </template>
                 <label class="null-toggle" v-if="field.nullable && !field.isPrimaryKey && !field.audioValueType">
-                  <input type="checkbox" v-model="field.isNull" /> NULL
+                  <input type="checkbox" v-model="field.isNull" :aria-label="'Set ' + field.name + ' to NULL'" />
+                  <span>Set NULL</span>
                 </label>
               </div>
             </div>
@@ -716,7 +740,7 @@
                     (area {{ editor.roomAssignments.rooms.find(room => String(room.id) === roomId).known_area_id }})
                   </small>
                 </span>
-                <button class="small danger" @click="removeRoomAssignment(roomId)"
+                <button class="small danger" @click="removeRoomAssignment(roomId)" :aria-label="'Remove room ' + roomId"
                         :disabled="editor.roomAssignments.removingRoomIds.includes(roomId)">
                   {{ editor.roomAssignments.removingRoomIds.includes(roomId) ? 'Removing...' : 'Remove' }}
                 </button>
@@ -724,7 +748,8 @@
             </ul>
             <div v-else-if="!editor.roomAssignments.loading" class="muted">No rooms assigned</div>
             <div class="room-assignment-add">
-              <select v-model="editor.roomAssignments.selectedRoomId" :disabled="editor.roomAssignments.loading || editor.roomAssignments.adding">
+              <select v-model="editor.roomAssignments.selectedRoomId" aria-label="Select a room to assign"
+                      :disabled="editor.roomAssignments.loading || editor.roomAssignments.adding">
                 <option value="">Select a room</option>
                 <option v-for="room in editor.roomAssignments.rooms.filter(room => !isRoomAssigned(room.id))"
                         :key="room.id" :value="String(room.id)">
@@ -738,11 +763,11 @@
             </div>
           </section>
 
-          <div class="modal-actions">
-            <button @click="closeEditor">Cancel</button>
+          <div class="modal-actions editor-modal-actions">
+            <button @click="closeEditor" :disabled="editor.saving">Cancel</button>
             <button class="primary" @click="saveRow"
                     :disabled="editor.saving || editor.fields.some(field => field.audioValueType && (field.isNull || field.value === ''))">
-              {{ editor.saving ? 'Saving...' : 'Save' }}
+              {{ editor.saving ? 'Saving...' : editor.mode === 'edit' ? 'Save changes' : editor.duplicate ? 'Create duplicate' : 'Create row' }}
             </button>
           </div>
         </section>

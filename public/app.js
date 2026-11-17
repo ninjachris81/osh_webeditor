@@ -206,6 +206,12 @@ createApp({
     visibleEditorFields() {
       return this.editor.fields.filter((f) => this.isFieldVisible(f));
     },
+    editorIdentity() {
+      if (this.editor.mode !== 'edit' || !this.schema) return '';
+      return this.schema.primaryKey
+        .map((column) => `${column}=${this.editor.pk[column]}`)
+        .join(', ');
+    },
     valueTypeOptions() {
       return Object.entries(VALUE_TYPES).map(([value, label]) => ({ value, label }));
     },
@@ -349,7 +355,7 @@ createApp({
         const dialog = this.$refs[refName];
         if (!dialog) return;
         const firstFocusable = dialog.querySelector(
-          'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled])'
+          'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]):not(.modal-close)'
         );
         (firstFocusable || dialog).focus();
       });
@@ -1584,6 +1590,7 @@ createApp({
     },
 
     closeEditor() {
+      if (this.editor.saving) return;
       this.editor.show = false;
       this.restoreDialogFocus();
     },
@@ -1629,6 +1636,7 @@ createApp({
             body: { pk: this.editor.pk, values: this.collectValues() },
           });
         }
+        this.editor.saving = false;
         this.closeEditor();
         if (this.editor.returnToAudioSetup) {
           await this.loadAudioPlaybackActors();
@@ -1639,6 +1647,12 @@ createApp({
         }
       } catch (err) {
         this.editor.error = err.message;
+        await nextTick();
+        const error = this.$refs.editorError;
+        if (error) {
+          this.$refs.editorDialog.scrollTop = 0;
+          error.focus();
+        }
       } finally {
         this.editor.saving = false;
       }

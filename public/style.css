@@ -536,7 +536,7 @@ select:focus {
   align-items: flex-start;
   justify-content: center;
   padding: 40px 16px;
-  z-index: 10;
+  z-index: 30;
 }
 
 .modal {
@@ -555,12 +555,58 @@ select:focus {
   font-size: 17px;
 }
 
+.editor-modal-header {
+  position: sticky;
+  top: -20px;
+  z-index: 2;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin: -20px -24px 12px;
+  padding: 18px 24px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-alt);
+}
+
+.editor-modal-header h2 {
+  margin: 0;
+}
+
+.editor-identity,
+.editor-help {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.modal-close {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 8px;
+}
+
+.modal-close svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
 .form-row {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 6px 0;
   border-bottom: 1px solid var(--border);
+}
+
+.form-row:focus-within {
+  background: rgba(79, 142, 247, 0.06);
 }
 
 .field-label {
@@ -630,9 +676,20 @@ select:focus {
 }
 
 .null-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
   color: var(--muted);
   font-size: 12px;
   white-space: nowrap;
+  cursor: pointer;
+}
+
+.null-toggle input {
+  margin: 0;
 }
 
 .modal-actions {
@@ -640,6 +697,16 @@ select:focus {
   justify-content: flex-end;
   gap: 8px;
   margin-top: 16px;
+}
+
+.editor-modal-actions {
+  position: sticky;
+  bottom: -20px;
+  z-index: 2;
+  margin: 16px -24px -20px;
+  padding: 12px 24px 20px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-alt);
 }
 
 .room-assignments {

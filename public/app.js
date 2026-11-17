@@ -1,7 +1,9 @@
 /* global Vue */
 'use strict';
 
-const { createApp, markRaw } = Vue;
+const { createApp, markRaw, nextTick } = Vue;
+
+let dialogReturnFocus = null;
 
 const ACTOR_COMMANDS = {
   1: 'ACTOR_ON', 2: 'ACTOR_OFF', 3: 'ACTOR_UP', 4: 'ACTOR_DOWN',
@@ -125,6 +127,8 @@ createApp({
       mainTables: [],
       otherTables: [],
       missingMain: [],
+      mobileNavOpen: false,
+      navTableSearch: '',
       currentTable: null,
       currentView: 'system-overview',
       systemOverview: { areas: [], loading: false, error: null, expandedAreas: {}, expandedRooms: {} },
@@ -141,13 +145,14 @@ createApp({
       searchInput: '',
       search: '',
       filters: {},
+      hiddenColumns: [],
       filterOptions: {},
       lookupOptions: {},
       loading: false,
       error: null,
       watch: { show: false, topic: '', status: 'connecting', statusText: 'Connecting', error: null, messages: [] },
       watchSource: null,
-      statusOverview: { devices: [], loading: false, connection: 'connecting', connectionText: 'Connecting', error: null, onlineTimeoutSeconds: 60, searchTerm: '' },
+      statusOverview: { devices: [], loading: false, connection: 'connecting', connectionText: 'Connecting', error: null, onlineTimeoutSeconds: 60, searchTerm: '', showDatabaseFields: false },
       statusSource: null,
       statusTimer: null,
       statusNow: Date.now(),
@@ -213,6 +218,20 @@ createApp({
     processorTaskTypeOptions() {
       return PROCESSOR_TASK_TYPES;
     },
+    filteredMainTables() {
+      const query = this.navTableSearch.trim().toLocaleLowerCase();
+      return this.mainTables.filter((table) => table.name.toLocaleLowerCase().includes(query));
+    },
+    filteredOtherTables() {
+      const query = this.navTableSearch.trim().toLocaleLowerCase();
+      return this.otherTables.filter((table) => table.name.toLocaleLowerCase().includes(query));
+    },
+    visibleTableColumns() {
+      if (!this.schema) return [];
+      return this.schema.columns.filter((column) => (
+        column.isPrimaryKey || !this.hiddenColumns.includes(column.name)
+      ));
+    },
     actorCommandOptions() {
       return Object.entries(ACTOR_COMMANDS).map(([value, label]) => ({ value, label }));
     },
@@ -230,11 +249,11 @@ createApp({
     },
     filteredStatusDevices() {
       const query = this.statusOverview.searchTerm.trim().toLocaleLowerCase();
-      if (!query) return this.statusOverview.devices;
       return this.statusOverview.devices.filter((device) => (
+        !query ||
         [device.id, device.serviceId, device.details.name, device.displayName, device.deviceName]
           .some((value) => String(value ?? '').toLocaleLowerCase().includes(query))
-      ));
+      )).sort((a, b) => this.deviceStatusPriority(a) - this.deviceStatusPriority(b));
     },
     mandatoryDevices() {
       return this.statusOverview.devices.filter((device) => (
@@ -251,8 +270,14 @@ createApp({
       if (!query) return this.objectOverview.groups;
       return this.objectOverview.groups.filter((group) => (
         String(group.id).toLocaleLowerCase().includes(query) ||
-        String(group.comment ?? '').toLocaleLowerCase().includes(query)
+        String(group.comment ?? '').toLocaleLowerCase().includes(query) ||
+        group.actors.concat(group.values).some((item) => this.objectItemMatches(item, query))
       ));
+    },
+    matchingObjectCount() {
+      return this.filteredObjectGroups.reduce((count, group) => (
+        count + this.objectItems(group, 'actors').length + this.objectItems(group, 'values').length
+      ), 0);
     },
     processorVariableMatcher() {
       const ids = [...this.processorVariableIds]
@@ -265,8 +290,114 @@ createApp({
   },
 
   methods: {
+    closeMobileNav() {
+      const wasOpen = this.mobileNavOpen;
+      this.mobileNavOpen = false;
+      if (wasOpen) nextTick(() => this.$refs.mobileNavToggle?.focus());
+    },
+
+    setSystemAreasExpanded(expanded) {
+      this.systemOverview.expandedAreas = Object.fromEntries(
+        this.systemOverview.areas.map((area) => [String(area.id), expanded])
+      );
+      this.systemOverview.expandedRooms = expanded
+        ? Object.fromEntries(this.systemOverview.areas.flatMap((area) => (
+          area.rooms.map((room) => [`${area.id}:${room.id}`, true])
+        )))
+        : {};
+    },
+
+    expandObjectGroups(expanded) {
+      this.objectOverview.expandedGroups = Object.fromEntries(
+        this.objectOverview.groups.map((group) => [String(group.id), expanded])
+      );
+    },
+
+    objectGroupMatches(group, query) {
+      return String(group.id).toLocaleLowerCase().includes(query) ||
+        String(group.comment ?? '').toLocaleLowerCase().includes(query);
+    },
+
+    objectItemMatches(item, query) {
+      return this.formatMindmapId(item).toLocaleLowerCase().includes(query) ||
+        Object.values(item).some((value) => (
+          String(value ?? '').toLocaleLowerCase().includes(query)
+        ));
+    },
+
+    objectItems(group, type) {
+      const query = this.objectOverview.searchTerm.trim().toLocaleLowerCase();
+      if (!query || this.objectGroupMatches(group, query)) return group[type];
+      return group[type].filter((item) => this.objectItemMatches(item, query));
+    },
+
+    isObjectGroupExpanded(group) {
+      return !!this.objectOverview.searchTerm.trim() || !!this.objectOverview.expandedGroups[group.id];
+    },
+
+    setTableColumnVisible(name, visible) {
+      const column = this.schema?.columns.find((item) => item.name === name);
+      if (!column || column.isPrimaryKey) return;
+      this.hiddenColumns = visible
+        ? this.hiddenColumns.filter((hidden) => hidden !== name)
+        : [...new Set([...this.hiddenColumns, name])];
+    },
+
+    focusDialog(refName, returnFocus = document.activeElement) {
+      dialogReturnFocus = returnFocus;
+      nextTick(() => {
+        const dialog = this.$refs[refName];
+        if (!dialog) return;
+        const firstFocusable = dialog.querySelector(
+          'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled])'
+        );
+        (firstFocusable || dialog).focus();
+      });
+    },
+
+    trapDialogFocus(event) {
+      if (event.key !== 'Tab') return;
+      const dialog = event.currentTarget;
+      const focusable = [...dialog.querySelectorAll(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      )].filter((element) => element.getClientRects().length > 0);
+      if (focusable.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    },
+
+    restoreDialogFocus() {
+      const target = dialogReturnFocus;
+      dialogReturnFocus = null;
+      nextTick(() => {
+        if (target?.isConnected) target.focus();
+      });
+    },
+
     isNumeric(t) {
       return NUMERIC_TYPES.includes(t);
+    },
+
+    editorFieldId(field) {
+      return `editor-field-${encodeURIComponent(field.name)}`;
+    },
+
+    rowIdentity(row) {
+      const primaryKey = this.schema?.primaryKey || [];
+      return primaryKey.length
+        ? primaryKey.map((column) => `${column}=${row[column]}`).join(', ')
+        : `row ${this.rows.indexOf(row) + 1}`;
     },
 
     editorClassType() {
@@ -300,6 +431,7 @@ createApp({
     },
 
     async selectTable(name) {
+      this.closeMobileNav();
       this.closeSystemOverviewValues();
       this.closeStatusOverview();
       this.closeWarningLog();
@@ -313,6 +445,7 @@ createApp({
       this.search = '';
       this.searchInput = '';
       this.filters = {};
+      this.hiddenColumns = [];
       this.filterOptions = {};
       this.lookupOptions = {};
       this.dir = 'asc';
@@ -363,6 +496,7 @@ createApp({
     },
 
     async showSystemOverview() {
+      this.closeMobileNav();
       this.closeSystemOverviewValues();
       this.closeStatusOverview();
       this.closeWarningLog();
@@ -380,7 +514,7 @@ createApp({
         const data = await api('/api/system-overview');
         this.systemOverview.areas = data.areas;
         this.systemOverview.expandedAreas = Object.fromEntries(
-          data.areas.map((area) => [String(area.id), true])
+          data.areas.map((area) => [String(area.id), false])
         );
         const source = markRaw(new EventSource('/api/system-overview/values-events'));
         this.systemOverviewValueSource = source;
@@ -426,6 +560,7 @@ createApp({
     },
 
     async showObjectOverview() {
+      this.closeMobileNav();
       this.closeSystemOverviewValues();
       this.closeStatusOverview();
       this.closeWarningLog();
@@ -686,9 +821,10 @@ createApp({
         saving: false,
         error: null,
       };
+      this.focusDialog('editorDialog');
     },
 
-    openEdit(row) {
+    openEdit(row, returnFocus = document.activeElement) {
       const pk = {};
       for (const k of this.schema.primaryKey) pk[k] = row[k];
       this.editor = {
@@ -710,6 +846,7 @@ createApp({
           error: null,
         },
       };
+      this.focusDialog('editorDialog', returnFocus);
       if (this.editor.roomAssignments.enabled) this.loadRoomAssignments();
     },
 
@@ -786,6 +923,7 @@ createApp({
 
     openWatch(row, tableName = this.currentTable) {
       this.closeWatch();
+      this.focusDialog('watchDialog');
       const kind = tableName === 'dm_actors' ? 'ac' : 'va';
       const topic = `osh/${kind}/${row.value_group_id}/${row.id}`;
       const params = new URLSearchParams({
@@ -810,6 +948,7 @@ createApp({
         senderNames: {},
         senderLookups: {},
       };
+      nextTick(() => this.$refs.watchDialog?.focus());
       const source = markRaw(new EventSource(`/api/watch?${params}`));
       this.watchSource = source;
       source.addEventListener('status', (event) => {
@@ -891,9 +1030,11 @@ createApp({
     },
 
     closeWatch() {
+      const wasOpen = this.watch?.show;
       if (this.watchSource) this.watchSource.close();
       this.watchSource = null;
       if (this.watch) this.watch.show = false;
+      if (wasOpen) this.restoreDialogFocus();
     },
 
     async copyWatchTopic() {
@@ -971,6 +1112,7 @@ createApp({
     },
 
     showAudioSetup() {
+      this.closeMobileNav();
       this.closeSystemOverviewValues();
       this.closeStatusOverview();
       this.closeWarningLog();
@@ -995,6 +1137,7 @@ createApp({
     },
 
     async openAudioActorEdit(actor) {
+      const returnFocus = document.activeElement;
       try {
         const schema = await api('/api/tables/dm_actors/schema');
         this.schema = schema;
@@ -1014,6 +1157,7 @@ createApp({
           returnToAudioSetup: true,
           roomAssignments: { enabled: false },
         };
+        this.focusDialog('editorDialog', returnFocus);
       } catch (err) {
         this.audioSetup.error = `Failed to open playback actor: ${err.message}`;
       }
@@ -1021,6 +1165,7 @@ createApp({
 
     async openAudioActorCreate() {
       if (this.audioSetup.creating) return;
+      const returnFocus = document.activeElement;
       this.audioSetup.creating = true;
       this.audioSetup.error = null;
       try {
@@ -1051,6 +1196,7 @@ createApp({
           returnToAudioSetup: true,
           roomAssignments: { enabled: false },
         };
+        this.focusDialog('editorDialog', returnFocus);
       } catch (err) {
         this.audioSetup.error = `Failed to prepare playback actor: ${err.message}`;
       } finally {
@@ -1145,6 +1291,7 @@ createApp({
     },
 
     showStatusOverview() {
+      this.closeMobileNav();
       this.closeSystemOverviewValues();
       this.closeStatusOverview();
       this.closeWarningLog();
@@ -1159,6 +1306,7 @@ createApp({
         error: null,
         onlineTimeoutSeconds: 60,
         searchTerm: '',
+        showDatabaseFields: false,
       };
       this.statusNow = Date.now();
       this.statusTimer = setInterval(() => {
@@ -1244,6 +1392,7 @@ createApp({
     },
 
     showWarningLog() {
+      this.closeMobileNav();
       this.closeSystemOverviewValues();
       this.closeWarningLog();
       this.closeStatusOverview();
@@ -1293,6 +1442,7 @@ createApp({
     },
 
     async openRegisterDevice(device) {
+      const returnFocus = document.activeElement;
       try {
         const tableName = 'dm_known_devices';
         const schema = await api(`/api/tables/${encodeURIComponent(tableName)}/schema`);
@@ -1336,15 +1486,17 @@ createApp({
           saving: false,
           error: null,
         };
+        this.focusDialog('editorDialog', returnFocus);
       } catch (err) {
         this.statusOverview.error = `Failed to prepare device registration: ${err.message}`;
       }
     },
 
     async openKnownDevice(device) {
+      const returnFocus = document.activeElement;
       await this.selectTable('dm_known_devices');
       if (!this.schema) return;
-      this.openEdit(device.details);
+      this.openEdit(device.details, returnFocus);
     },
 
     isDeviceOnline(device) {
@@ -1353,6 +1505,13 @@ createApp({
       if (this.statusNow - device.lastMessageAt > timeout) return false;
       return !Number.isFinite(device.messageTimestamp) ||
         Math.abs(this.statusNow - device.messageTimestamp) <= timeout;
+    },
+
+    deviceStatusPriority(device) {
+      if (!this.isDeviceOnline(device)) return 0;
+      if (device.health === false) return 1;
+      if (device.health === null) return 2;
+      return 3;
     },
 
     timestampMilliseconds(timestamp) {
@@ -1421,10 +1580,12 @@ createApp({
         saving: false,
         error: null,
       };
+      this.focusDialog('editorDialog');
     },
 
     closeEditor() {
       this.editor.show = false;
+      this.restoreDialogFocus();
     },
 
     collectValues() {
@@ -1468,7 +1629,7 @@ createApp({
             body: { pk: this.editor.pk, values: this.collectValues() },
           });
         }
-        this.editor.show = false;
+        this.closeEditor();
         if (this.editor.returnToAudioSetup) {
           await this.loadAudioPlaybackActors();
         } else if (this.editor.returnToOverview) {
